@@ -97,12 +97,15 @@ async function resolveOllamaDefaultModel(
 }
 
 function runCommand(command: string, env: NodeJS.ProcessEnv): Promise<number> {
+  return runProcess(command, [], env)
+}
+
+function runProcess(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise(resolve => {
-    const child = spawn(command, {
+    const child = spawn(command, args, {
       cwd: process.cwd(),
       env,
       stdio: 'inherit',
-      shell: true,
     })
 
     child.on('close', code => resolve(code ?? 1))
@@ -118,11 +121,6 @@ function applyFastFlags(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   env.CLAUDE_CODE_DISABLE_AUTO_MEMORY ??= '1'
   env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS ??= '1'
   return env
-}
-
-function quoteArg(arg: string): string {
-  if (!arg.includes(' ') && !arg.includes('"')) return arg
-  return `"${arg.replace(/"/g, '\\"')}"`
 }
 
 function printSummary(profile: ProviderProfile, env: NodeJS.ProcessEnv): void {
@@ -216,15 +214,18 @@ async function main(): Promise<void> {
 
   printSummary(profile, env)
 
-  const doctorCode = await runCommand('bun run scripts/system-check.ts', env)
+  const doctorCode = await runProcess('bun', ['run', 'scripts/system-check.ts'], env)
   if (doctorCode !== 0) {
     console.error('Runtime doctor failed. Fix configuration before launching.')
     process.exit(doctorCode)
   }
 
-  const cliArgs = options.passthroughArgs.map(quoteArg).join(' ')
-  const devCommand = cliArgs ? `bun run dev -- ${cliArgs}` : 'bun run dev'
-  const devCode = await runCommand(devCommand, env)
+  const buildCode = await runProcess('bun', ['run', 'build'], env)
+  if (buildCode !== 0) {
+    process.exit(buildCode)
+  }
+
+  const devCode = await runProcess('node', ['dist/cli.mjs', ...options.passthroughArgs], env)
   process.exit(devCode)
 }
 
