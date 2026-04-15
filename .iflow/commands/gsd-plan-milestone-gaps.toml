@@ -1,0 +1,15 @@
+# generated-by: gsd-iflow-bridge
+# source: .claude/commands/gsd/plan-milestone-gaps.md
+description = "Create phases to close all gaps identified by milestone audit"
+
+prompt = """
+Você está executando um comando bridge do GSD no iFlow.
+
+1) PRIMEIRO, leia este arquivo de comando fonte:
+   .claude/commands/gsd/plan-milestone-gaps.md
+
+2) Execute o conteúdo desse comando integralmente (objective, execution_context e process).
+3) Preserve aprovações, checkpoints, validações e protocolos de segurança do GSD.
+4) Se o usuário tiver enviado texto adicional junto do comando, trate como ARGUMENTS do comando GSD.
+5) Não simplifique o workflow; siga a orquestração definida no arquivo fonte.
+"""

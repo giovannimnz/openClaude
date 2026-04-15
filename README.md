@@ -4,14 +4,14 @@ OpenClaude is an open-source coding-agent CLI for cloud and local model provider
 
 Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported backends while keeping one terminal-first workflow: prompts, tools, agents, MCP, slash commands, and streaming output.
 
-[![PR Checks](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml)
-[![Release](https://img.shields.io/github/v/tag/Gitlawb/openclaude?label=release&color=0ea5e9)](https://github.com/Gitlawb/openclaude/tags)
-[![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/Gitlawb/openclaude/discussions)
+[![PR Checks](https://github.com/giovannimnz/openClaude/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/giovannimnz/openClaude/actions/workflows/pr-checks.yml)
+[![Release](https://img.shields.io/github/v/tag/giovannimnz/openClaude?label=release&color=0ea5e9)](https://github.com/giovannimnz/openClaude/tags)
+[![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/giovannimnz/openClaude/discussions)
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
-OpenClaude is also mirrored to GitLawb:
-[gitlawb.com/node/repos/z6MkqDnb/openclaude](https://gitlawb.com/node/repos/z6MkqDnb/openclaude)
+OpenClaude is available at:
+[github.com/giovannimnz/openClaude](https://github.com/giovannimnz/openClaude)
 
 [Quick Start](#quick-start) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Community](#community)
 
@@ -28,7 +28,7 @@ OpenClaude is also mirrored to GitLawb:
 ### Install
 
 ```bash
-npm install -g @gitlawb/openclaude
+npm install -g @giovannimnz/openclaude
 ```
 
 If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenClaude.
@@ -305,8 +305,8 @@ If you believe you found a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Community
 
-- Use [GitHub Discussions](https://github.com/Gitlawb/openclaude/discussions) for Q&A, ideas, and community conversation
-- Use [GitHub Issues](https://github.com/Gitlawb/openclaude/issues) for confirmed bugs and actionable feature work
+- Use [GitHub Discussions](https://github.com/giovannimnz/openClaude/discussions) for Q&A, ideas, and community conversation
+- Use [GitHub Issues](https://github.com/giovannimnz/openClaude/issues) for confirmed bugs and actionable feature work
 
 ## Contributing
 

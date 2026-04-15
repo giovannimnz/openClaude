@@ -163,6 +163,16 @@ export function getProviderPresetDefaults(
         apiKey: '',
         requiresApiKey: true,
       }
+    case 'google-gemini-cli':
+      return {
+        provider: 'google-gemini-cli',
+        name: 'Google Gemini CLI',
+        baseUrl: 'https://cloudcodeassist.googleapis.com/v1',
+        model: 'gemini-2.5-pro',
+        apiKey: '',
+        requiresApiKey: false,
+        requiresOAuth: true,
+      }
     case 'mistral':
       return {
         provider: 'openai',

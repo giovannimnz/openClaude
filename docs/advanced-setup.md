@@ -7,7 +7,7 @@ This guide is for users who want source builds, Bun workflows, provider profiles
 ### Option A: npm
 
 ```bash
-npm install -g @gitlawb/openclaude
+npm install -g @giovannimnz/openClaude
 ```
 
 ### Option B: From source with Bun
@@ -15,7 +15,7 @@ npm install -g @gitlawb/openclaude
 Use Bun `1.3.11` or newer for source builds on Windows. Older Bun versions can fail during `bun run build`.
 
 ```bash
-git clone https://node.gitlawb.com/z6MkqDnb7Siv3Cwj7pGJq4T5EsUisECqR8KpnDLwcaZq5TPr/openclaude.git
+git clone https://github.com/giovannimnz/openClaude.git
 cd openclaude
 
 bun install
@@ -26,7 +26,7 @@ npm link
 ### Option C: Run directly with Bun
 
 ```bash
-git clone https://node.gitlawb.com/z6MkqDnb7Siv3Cwj7pGJq4T5EsUisECqR8KpnDLwcaZq5TPr/openclaude.git
+git clone https://github.com/giovannimnz/openClaude.git
 cd openclaude
 
 bun install

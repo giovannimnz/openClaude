@@ -27,7 +27,7 @@ type Props = {
   onDone(result?: ConsoleOAuthFlowResult): void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
-  forceLoginMethod?: 'claudeai' | 'console';
+  forceLoginMethod?: 'claudeai' | 'console' | 'google-gemini-cli';
   initialStatus?: OAuthStatus;
 };
 type OAuthStatus = {
@@ -42,6 +42,7 @@ type OAuthStatus = {
 }
 | {
   state: 'ready_to_start';
+  googleGeminiCliFlow?: boolean;
 } // Flow started, waiting for browser to open
 | {
   state: 'waiting_for_login';
@@ -380,6 +381,30 @@ function OAuthStatusMessage({
   setOAuthStatus,
   setLoginWithClaudeAi,
 }: OAuthStatusMessageProps) {
+  const [GoogleGeminiCliOAuth, setGoogleGeminiCliOAuth] = React.useState<React.ComponentType<{ onDone: (success: boolean) => void }> | null>(null)
+
+  // Load GoogleGeminiCliOAuth component dynamically when needed
+  React.useEffect(() => {
+    if (oauthStatus.state === 'ready_to_start' && oauthStatus.googleGeminiCliFlow && !GoogleGeminiCliOAuth) {
+      import('./GoogleGeminiCliOAuth.js').then(({ GoogleGeminiCliOAuth: GGC }) => {
+        setGoogleGeminiCliOAuth(() => GGC)
+      })
+    }
+  }, [oauthStatus.state, oauthStatus.googleGeminiCliFlow, GoogleGeminiCliOAuth])
+
+  // Render Google Gemini CLI flow
+  if (oauthStatus.state === 'ready_to_start' && oauthStatus.googleGeminiCliFlow && GoogleGeminiCliOAuth) {
+    return React.createElement(GoogleGeminiCliOAuth, {
+      onDone: (success: boolean) => {
+        if (success) {
+          setOAuthStatus({ state: 'success' })
+        } else {
+          setOAuthStatus({ state: 'idle' })
+        }
+      },
+    })
+  }
+
   switch (oauthStatus.state) {
     case 'idle': {
       const promptText =
@@ -410,6 +435,16 @@ function OAuthStatusMessage({
         {
           label: (
             <Text>
+              Google Gemini CLI ·{' '}
+              <Text dimColor>Free via Google Cloud Code Assist</Text>
+              {'\n'}
+            </Text>
+          ),
+          value: 'google-gemini-cli' as const,
+        },
+        {
+          label: (
+            <Text>
               3rd-party platform ·{' '}
               <Text dimColor>OpenAI, Gemini, Bedrock, Ollama, and more</Text>
               {'\n'}
@@ -430,6 +465,18 @@ function OAuthStatusMessage({
                 if (value === 'platform') {
                   logEvent('tengu_oauth_platform_selected', {})
                   setOAuthStatus({ state: 'platform_setup' })
+                  return
+                }
+
+                if (value === 'google-gemini-cli') {
+                  logEvent('google_gemini_cli_selected', {})
+                  // Import GoogleGeminiCliOAuth component dynamically
+                  import('./GoogleGeminiCliOAuth.js').then(({ GoogleGeminiCliOAuth }) => {
+                    setOAuthStatus({
+                      state: 'ready_to_start',
+                      googleGeminiCliFlow: true,
+                    })
+                  })
                   return
                 }
 

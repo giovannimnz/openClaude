@@ -7,7 +7,9 @@ import { memoizeWithTTLAsync } from './memoize.js'
 const GEMINI_ADC_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 const GEMINI_ADC_CACHE_TTL_MS = 5 * 60 * 1000
 
-export type GeminiAuthMode = 'api-key' | 'access-token' | 'adc'
+import { getGoogleCloudAccessToken, refreshGoogleCloudToken } from '../services/oauth/google-gemini-cli.js'
+
+export type GeminiAuthMode = 'api-key' | 'access-token' | 'adc' | 'oauth'
 
 type GoogleAccessTokenResult =
   | string
@@ -32,7 +34,7 @@ export type GeminiResolvedCredential =
       credential: string
     }
   | {
-      kind: 'access-token' | 'adc'
+      kind: 'access-token' | 'adc' | 'oauth'
       credential: string
       projectId?: string
     }
@@ -66,7 +68,8 @@ export function getGeminiAuthMode(
   if (
     normalized === 'api-key' ||
     normalized === 'access-token' ||
-    normalized === 'adc'
+    normalized === 'adc' ||
+    normalized === 'oauth'
   ) {
     return normalized
   }
@@ -174,8 +177,26 @@ export async function resolveGeminiCredential(
   deps: ResolveGeminiCredentialDeps = {},
 ): Promise<GeminiResolvedCredential> {
   const authMode = getGeminiAuthMode(env)
+  
+  // Check for OAuth first (highest priority)
+  if (authMode === 'oauth' || authMode === undefined) {
+    try {
+      const oauthToken = await getGoogleCloudAccessToken()
+      if (oauthToken) {
+        const projectId = getGeminiProjectIdHint(env)
+        return {
+          kind: 'oauth',
+          credential: oauthToken,
+          ...(projectId ? { projectId } : {}),
+        }
+      }
+    } catch {
+      // OAuth not available, continue to other auth methods
+    }
+  }
+
   const apiKey =
-    authMode === 'access-token' || authMode === 'adc'
+    authMode === 'access-token' || authMode === 'adc' || authMode === 'oauth'
       ? undefined
       : sanitizeCredential(env.GEMINI_API_KEY) ??
         sanitizeCredential(env.GOOGLE_API_KEY)
@@ -187,7 +208,7 @@ export async function resolveGeminiCredential(
   }
 
   const accessToken =
-    authMode === 'api-key' || authMode === 'adc'
+    authMode === 'api-key' || authMode === 'adc' || authMode === 'oauth'
       ? undefined
       : sanitizeCredential(env.GEMINI_ACCESS_TOKEN)
   if (accessToken && (authMode === undefined || authMode === 'access-token')) {
@@ -200,6 +221,11 @@ export async function resolveGeminiCredential(
   }
 
   if (authMode === 'api-key' || authMode === 'access-token') {
+    return { kind: 'none' }
+  }
+
+  if (authMode === 'oauth') {
+    // OAuth mode was explicitly set but no OAuth token found
     return { kind: 'none' }
   }
 
