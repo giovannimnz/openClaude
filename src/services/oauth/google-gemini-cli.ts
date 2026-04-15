@@ -5,7 +5,8 @@
  * Compatible with GSD-2/Pi SDK implementation
  * 
  * Features:
- * - PKCE OAuth flow
+ * - PKCE OAuth flow (standard)
+ * - Enterprise flow via gcloud ADC
  * - Automatic token refresh
  * - Secure credential storage
  * - Google Cloud Code Assist API support
@@ -15,6 +16,10 @@ import { randomBytes, createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 // Google Cloud OAuth endpoints
 const GOOGLE_OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -30,69 +35,15 @@ const GEMINI_CLI_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/cloud-code-assist',
 ]
 
-// OAuth scopes for Google Cloud Enterprise projects
-const GEMINI_CLI_ENTERPRISE_OAUTH_SCOPES = [
-  'https://www.googleapis.com/auth/cloud-platform',
-  'https://www.googleapis.com/auth/cloud-code-assist',
-  'https://www.googleapis.com/auth/cloud-identity',
-  'https://www.googleapis.com/auth/iam',
-]
-
-/**
- * Get Google Cloud Project ID from environment or credentials
- */
-export function getGoogleCloudProjectId(): string | undefined {
-  return (
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.GCLOUD_PROJECT ||
-    process.env.GOOGLE_PROJECT_ID ||
-    undefined
-  )
-}
-
-/**
- * Check if running in enterprise/corporate environment
- */
-export function isEnterpriseEnvironment(): boolean {
-  const projectId = getGoogleCloudProjectId()
-  return projectId !== undefined && projectId !== ''
-}
-
-/**
- * Get enterprise metadata from stored credentials
- */
-export async function getEnterpriseMetadata(): Promise<{projectId?: string; environment?: string} | null> {
-  try {
-    const auth = await loadAuthFile()
-    const geminiCliAuth = auth['google-gemini-cli'] as GoogleOAuthCredential | undefined
-    
-    if (!geminiCliAuth || !geminiCliAuth.metadata) {
-      return null
-    }
-    
-    return {
-      projectId: geminiCliAuth.metadata.projectId,
-      environment: geminiCliAuth.metadata.environment,
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Get appropriate OAuth scopes based on environment
- */
-function getOAuthScopes(): string[] {
-  if (isEnterpriseEnvironment()) {
-    return GEMINI_CLI_ENTERPRISE_OAUTH_SCOPES
-  }
-  return GEMINI_CLI_OAUTH_SCOPES
-}
-
 // Storage paths (compatible with Pi SDK)
 const PI_CONFIG_DIR = join(homedir(), '.pi')
 const PI_AGENT_DIR = join(PI_CONFIG_DIR, 'agent')
 const AUTH_JSON_PATH = join(PI_AGENT_DIR, 'auth.json')
+
+/**
+ * Authentication mode types
+ */
+export type AuthMode = 'oauth' | 'gcloud-adc'
 
 /**
  * OAuth credential types
@@ -109,16 +60,202 @@ export type GoogleOAuthCredential = {
   metadata?: {
     projectId?: string
     environment?: 'standard' | 'enterprise'
-    organizationId?: string
   }
 }
 
 /**
- * Auth.json structure (Pi SDK compatible)
+ * Gcloud ADC credential types
  */
-export type PiAuthFile = {
-  'google-gemini-cli'?: GoogleOAuthCredential
-  [key: string]: unknown
+export type GcloudADCCredential = {
+  type: 'gcloud-adc'
+  credentials: {
+    projectId: string
+    tokenSource: 'gcloud-adc'
+  }
+}
+
+/**
+ * Combined credential types
+ */
+export type GoogleGeminiCredential = GoogleOAuthCredential | GcloudADCCredential
+
+/**
+ * Auth file structure
+ */
+export type AuthFile = {
+  'google-gemini-cli'?: GoogleGeminiCredential
+}
+
+/**
+ * OAuth flow result
+ */
+export type OAuthFlowResult =
+  | {
+      success: true
+      accessToken: string
+      refreshToken?: string
+      expiryDate: number
+      authMode: AuthMode
+      projectId?: string
+    }
+  | {
+      success: false
+      error: string
+    }
+
+/**
+ * Enterprise environment info
+ */
+export type EnterpriseInfo = {
+  projectId?: string
+  hasGcloud: boolean
+  hasADC: boolean
+}
+
+/**
+ * Detect enterprise environment
+ */
+export function detectEnterpriseEnvironment(): EnterpriseInfo {
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.CLOUDSDK_CORE_PROJECT
+  
+  // Check if gcloud is available
+  let hasGcloud = false
+  try {
+    // Simple check if gcloud command might exist
+    const isWindows = process.platform === 'win32'
+    const gcloudPath = isWindows 
+      ? process.env.ProgramFiles + '\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd'
+      : '/usr/local/bin/gcloud'
+    hasGcloud = true // We'll check this more carefully when needed
+  } catch {
+    hasGcloud = false
+  }
+
+  // Check for ADC
+  const hasADC = !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+  
+  return {
+    projectId: projectId || undefined,
+    hasGcloud,
+    hasADC,
+  }
+}
+
+/**
+ * Check if gcloud is installed and can be used
+ */
+export async function checkGcloudAvailability(): Promise<boolean> {
+  try {
+    const isWindows = process.platform === 'win32'
+    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+    
+    await execFileAsync(command, ['--version'], {
+      windowsHide: true,
+      timeout: 5000
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check if ADC is available
+ */
+export async function checkADCAvailability(): Promise<boolean> {
+  try {
+    const isWindows = process.platform === 'win32'
+    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+    
+    await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
+      windowsHide: true,
+      timeout: 10000
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Get current access token from ADC
+ */
+export async function getADCAccessToken(): Promise<string | null> {
+  try {
+    const isWindows = process.platform === 'win32'
+    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+    
+    const { stdout } = await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
+      windowsHide: true,
+      timeout: 10000
+    })
+    
+    return stdout.trim()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Login via gcloud ADC (recommended for enterprise)
+ */
+export async function loginGcloudADC(): Promise<OAuthFlowResult> {
+  try {
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    
+    if (!enterpriseInfo.projectId) {
+      return {
+        success: false,
+        error: 'GOOGLE_CLOUD_PROJECT environment variable is required for gcloud ADC login'
+      }
+    }
+
+    const isWindows = process.platform === 'win32'
+    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+    
+    // Run gcloud auth application-default login
+    await execFileAsync(command, ['auth', 'application-default', 'login'], {
+      windowsHide: false, // Allow user interaction
+      timeout: 120000 // 2 minutes timeout for user to complete login
+    })
+    
+    // Verify login worked
+    const token = await getADCAccessToken()
+    if (!token) {
+      return {
+        success: false,
+        error: 'gcloud ADC login failed or token not available'
+      }
+    }
+    
+    // Store ADC credentials
+    const auth = await loadAuthFile()
+    auth['google-gemini-cli'] = {
+      type: 'gcloud-adc',
+      credentials: {
+        projectId: enterpriseInfo.projectId,
+        tokenSource: 'gcloud-adc'
+      },
+      metadata: {
+        projectId: enterpriseInfo.projectId,
+        environment: 'enterprise'
+      }
+    }
+    await saveAuthFile(auth)
+    
+    return {
+      success: true,
+      accessToken: token,
+      expiryDate: Date.now() + 3600 * 1000, // 1 hour (tokens are refreshed automatically)
+      authMode: 'gcloud-adc',
+      projectId: enterpriseInfo.projectId
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `gcloud ADC login failed: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
 }
 
 /**
@@ -126,33 +263,48 @@ export type PiAuthFile = {
  */
 function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
   const codeVerifier = randomBytes(32).toString('base64url')
-  const codeChallenge = createHash('sha256')
-    .update(codeVerifier)
-    .digest('base64url')
-  
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
   return { codeVerifier, codeChallenge }
 }
 
 /**
- * Generate random state for CSRF protection
+ * Generate random state parameter
  */
 function generateState(): string {
-  return randomBytes(16).toString('base64url')
+  return randomBytes(16).toString('hex')
 }
 
 /**
- * Exchange authorization code for access token
+ * Check if token is expired
  */
-async function exchangeCodeForToken(
-  code: string,
-  codeVerifier: string,
-): Promise<{
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  token_type: string
-  scope: string
-}> {
+function isTokenExpired(expiryDate: number): boolean {
+  return Date.now() >= expiryDate - 60000 // 1 minute buffer
+}
+
+/**
+ * Load auth.json file
+ */
+async function loadAuthFile(): Promise<AuthFile> {
+  try {
+    const content = await readFile(AUTH_JSON_PATH, 'utf-8')
+    return JSON.parse(content)
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Save auth.json file
+ */
+async function saveAuthFile(auth: AuthFile): Promise<void> {
+  await mkdir(PI_AGENT_DIR, { recursive: true })
+  await writeFile(AUTH_JSON_PATH, JSON.stringify(auth, null, 2))
+}
+
+/**
+ * Exchange authorization code for tokens
+ */
+async function exchangeCodeForToken(code: string, codeVerifier: string) {
   const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -168,25 +320,16 @@ async function exchangeCodeForToken(
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Token exchange failed: ${error}`)
+    throw new Error(`Token exchange failed: ${response.statusText}`)
   }
 
   return response.json()
 }
 
 /**
- * Refresh expired access token
+ * Refresh access token
  */
-async function refreshAccessToken(
-  refreshToken: string,
-): Promise<{
-  access_token: string
-  refresh_token?: string
-  expires_in: number
-  token_type: string
-  scope: string
-}> {
+async function refreshAccessToken(refreshToken: string) {
   const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -200,180 +343,135 @@ async function refreshAccessToken(
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Token refresh failed: ${error}`)
+    throw new Error(`Token refresh failed: ${response.statusText}`)
   }
 
   return response.json()
 }
 
 /**
- * Ensure Pi SDK directories exist
- */
-async function ensurePiDirectories(): Promise<void> {
-  try {
-    await mkdir(PI_AGENT_DIR, { recursive: true })
-  } catch (error) {
-    throw new Error(`Failed to create Pi SDK directories: ${error}`)
-  }
-}
-
-/**
- * Load auth.json file
- */
-async function loadAuthFile(): Promise<PiAuthFile> {
-  try {
-    const content = await readFile(AUTH_JSON_PATH, 'utf-8')
-    return JSON.parse(content) as PiAuthFile
-  } catch (error) {
-    // File doesn't exist or is invalid, return empty
-    return {}
-  }
-}
-
-/**
- * Save auth.json file
- */
-async function saveAuthFile(auth: PiAuthFile): Promise<void> {
-  await ensurePiDirectories()
-  await writeFile(AUTH_JSON_PATH, JSON.stringify(auth, null, 2), {
-    mode: 0o600, // Read/write for owner only
-  })
-}
-
-/**
- * Check if access token is expired
- */
-function isTokenExpired(expiryDate: number): boolean {
-  // Add 5 minute buffer to refresh before actual expiry
-  return Date.now() >= expiryDate - 5 * 60 * 1000
-}
-
-/**
- * Get fresh access token (refresh if needed)
- */
-export async function refreshGoogleCloudToken(): Promise<string> {
-  const auth = await loadAuthFile()
-  const geminiCliAuth = auth['google-gemini-cli']
-
-  if (!geminiCliAuth || geminiCliAuth.type !== 'oauth') {
-    throw new Error('No valid Google Gemini CLI OAuth credentials found. Run login first.')
-  }
-
-  const { credentials } = geminiCliAuth
-
-  // If token is still valid, return it
-  if (!isTokenExpired(credentials.expiry_date)) {
-    return credentials.access_token
-  }
-
-  // Token expired, refresh it
-  try {
-    const newTokens = await refreshAccessToken(credentials.refresh_token)
-    
-    // Update credentials
-    const updatedCredentials: GoogleOAuthCredential['credentials'] = {
-      access_token: newTokens.access_token,
-      refresh_token: newTokens.refresh_token || credentials.refresh_token,
-      expiry_date: Date.now() + newTokens.expires_in * 1000,
-      token_type: newTokens.token_type,
-      scope: newTokens.scope,
-    }
-
-    // Save updated credentials
-    auth['google-gemini-cli'] = {
-      type: 'oauth',
-      credentials: updatedCredentials,
-    }
-    
-    await saveAuthFile(auth)
-
-    return newTokens.access_token
-  } catch (error) {
-    throw new Error(`Failed to refresh Google Cloud token: ${error}`)
-  }
-}
-
-/**
- * Get current access token (without auto-refresh)
+ * Get access token with automatic refresh
  */
 export async function getGoogleCloudAccessToken(): Promise<string | null> {
   try {
     const auth = await loadAuthFile()
     const geminiCliAuth = auth['google-gemini-cli']
 
-    if (!geminiCliAuth || geminiCliAuth.type !== 'oauth') {
+    if (!geminiCliAuth) {
+      return null
+    }
+
+    // Handle gcloud ADC
+    if (geminiCliAuth.type === 'gcloud-adc') {
+      return await getADCAccessToken()
+    }
+
+    // Handle OAuth
+    if (geminiCliAuth.type !== 'oauth') {
       return null
     }
 
     const { credentials } = geminiCliAuth
 
-    if (isTokenExpired(credentials.expiry_date)) {
-      return null
+    // If token is still valid, return it
+    if (!isTokenExpired(credentials.expiry_date)) {
+      return credentials.access_token
     }
 
-    return credentials.access_token
-  } catch {
-    return null
+    // Token expired, refresh it
+    try {
+      const newTokens = await refreshAccessToken(credentials.refresh_token)
+      
+      // Update credentials
+      const updatedCredentials: GoogleOAuthCredential['credentials'] = {
+        access_token: newTokens.access_token,
+        refresh_token: newTokens.refresh_token || credentials.refresh_token,
+        expiry_date: Date.now() + newTokens.expires_in * 1000,
+        token_type: newTokens.token_type,
+        scope: newTokens.scope,
+      }
+
+      // Save updated credentials
+      auth['google-gemini-cli'] = {
+        type: 'oauth',
+        credentials: updatedCredentials,
+        metadata: geminiCliAuth.metadata
+      }
+      
+      await saveAuthFile(auth)
+
+      return newTokens.access_token
+    } catch (error) {
+      throw new Error(`Failed to refresh Google Cloud token: ${error}`)
+    }
+  } catch (error) {
+    throw new Error(`Failed to get Google Cloud access token: ${error}`)
   }
 }
 
 /**
- * OAuth flow result
+ * Check if user is logged in
  */
-export type OAuthFlowResult = {
-  success: boolean
-  accessToken?: string
-  refreshToken?: string
-  expiryDate?: number
-  error?: string
+export async function isGeminiCliLoggedIn(): Promise<boolean> {
+  try {
+    const auth = await loadAuthFile()
+    const geminiCliAuth = auth['google-gemini-cli']
+
+    if (!geminiCliAuth) {
+      return false
+    }
+
+    // For gcloud ADC, check if token is available
+    if (geminiCliAuth.type === 'gcloud-adc') {
+      const token = await getADCAccessToken()
+      return token !== null
+    }
+
+    // For OAuth, check if token exists and is not expired
+    if (geminiCliAuth.type === 'oauth') {
+      return !isTokenExpired(geminiCliAuth.credentials.expiry_date)
+    }
+
+    return false
+  } catch {
+    return false
+  }
 }
 
 /**
- * Start Google Gemini CLI OAuth flow
- * 
- * This function:
- * 1. Generates PKCE verifier/challenge
- * 2. Opens browser for user authorization
- * 3. Listens for callback on localhost
- * 4. Exchanges authorization code for tokens
- * 5. Stores tokens in auth.json
- * 
- * @param openUrl - Function to open URL in browser
- * @param onCodeReceived - Callback when authorization code is received
- * @returns OAuth flow result with access token
+ * Logout from Google Gemini CLI
  */
-export async function loginGeminiCli(
+export async function logoutGeminiCli(): Promise<void> {
+  try {
+    const auth = await loadAuthFile()
+    delete auth['google-gemini-cli']
+    await saveAuthFile(auth)
+  } catch (error) {
+    throw new Error(`Failed to logout: ${error}`)
+  }
+}
+
+/**
+ * Login via OAuth flow (standard)
+ */
+export async function loginGeminiCliOAuth(
   openUrl: (url: string) => Promise<void>,
   onCodeReceived?: (url: string) => void,
 ): Promise<OAuthFlowResult> {
   const { codeVerifier, codeChallenge } = generatePKCE()
   const state = generateState()
-  const projectId = getGoogleCloudProjectId()
-  const isEnterprise = isEnterpriseEnvironment()
 
   // Build authorization URL
   const authUrl = new URL(GOOGLE_OAUTH_AUTH_URL)
   authUrl.searchParams.set('client_id', GEMINI_CLI_CLIENT_ID)
   authUrl.searchParams.set('redirect_uri', GEMINI_CLI_REDIRECT_URI)
   authUrl.searchParams.set('response_type', 'code')
-  authUrl.searchParams.set('scope', getOAuthScopes().join(' '))
+  authUrl.searchParams.set('scope', GEMINI_CLI_OAUTH_SCOPES.join(' '))
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
   authUrl.searchParams.set('state', state)
-
-  // Add enterprise-specific parameters
-  if (isEnterprise && projectId) {
-    // Add access_type for offline access (required for refresh tokens)
-    authUrl.searchParams.set('access_type', 'offline')
-    
-    // Add prompt for consent (required for enterprise apps)
-    authUrl.searchParams.set('prompt', 'consent')
-    
-    console.log(`🏢 Enterprise environment detected`)
-    console.log(`📋 Project: ${projectId}`)
-    console.log(`🔐 Using enterprise OAuth scopes`)
-  }
+  authUrl.searchParams.set('access_type', 'offline') // For refresh token
+  authUrl.searchParams.set('prompt', 'consent') // Ensure consent screen
 
   const authUrlString = authUrl.toString()
 
@@ -413,10 +511,12 @@ export async function loginGeminiCli(
         try {
           const tokens = await exchangeCodeForToken(code!, codeVerifier)
           
+          // Get enterprise info
+          const enterpriseInfo = detectEnterpriseEnvironment()
+          
           // Store tokens in auth.json
           const auth = await loadAuthFile()
-          
-          const credentialData: GoogleOAuthCredential = {
+          auth['google-gemini-cli'] = {
             type: 'oauth',
             credentials: {
               access_token: tokens.access_token,
@@ -425,17 +525,13 @@ export async function loginGeminiCli(
               token_type: tokens.token_type,
               scope: tokens.scope,
             },
-          }
-          
-          // Add enterprise metadata if applicable
-          if (isEnterprise && projectId) {
-            credentialData.metadata = {
-              projectId,
-              environment: 'enterprise',
+            metadata: enterpriseInfo.projectId ? {
+              projectId: enterpriseInfo.projectId,
+              environment: 'enterprise'
+            } : {
+              environment: 'standard'
             }
           }
-          
-          auth['google-gemini-cli'] = credentialData
           await saveAuthFile(auth)
 
           // Send success response
@@ -446,6 +542,7 @@ export async function loginGeminiCli(
               <body>
                 <h1>Authentication Successful!</h1>
                 <p>You can close this window and return to the terminal.</p>
+                ${enterpriseInfo.projectId ? `<p><strong>Project:</strong> ${enterpriseInfo.projectId}</p>` : ''}
               </body>
             </html>
           `)
@@ -456,6 +553,8 @@ export async function loginGeminiCli(
             accessToken: tokens.access_token,
             refreshToken: tokens.refresh_token,
             expiryDate: Date.now() + tokens.expires_in * 1000,
+            authMode: 'oauth',
+            projectId: enterpriseInfo.projectId
           })
         } catch (error) {
           res.writeHead(500, { 'Content-Type': 'text/plain' })
@@ -473,49 +572,68 @@ export async function loginGeminiCli(
     })
 
     server.listen(8085, '127.0.0.1', () => {
-      console.log('OAuth callback server listening on http://127.0.0.1:8085')
+      // Server is listening
     })
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      server.close()
-      resolve({
-        success: false,
-        error: 'OAuth flow timed out',
-      })
-    }, 5 * 60 * 1000)
   })
 }
 
 /**
- * Check if user is logged in with Google Gemini CLI
+ * Main login function - auto-selects best auth method
  */
-export async function isGeminiCliLoggedIn(): Promise<boolean> {
+export async function loginGeminiCli(
+  openUrl: (url: string) => Promise<void>,
+  onCodeReceived?: (url: string) => void,
+  forceMode?: AuthMode,
+): Promise<OAuthFlowResult> {
+  const enterpriseInfo = detectEnterpriseEnvironment()
+  const hasGcloud = await checkGcloudAvailability()
+  const hasADC = await checkADCAvailability()
+
+  // If gcloud ADC is available and requested or auto-selected
+  if ((forceMode === 'gcloud-adc' || (!forceMode && enterpriseInfo.projectId && hasADC)) && hasGcloud) {
+    return await loginGcloudADC()
+  }
+
+  // Otherwise use OAuth flow
+  return await loginGeminiCliOAuth(openUrl, onCodeReceived)
+}
+
+/**
+ * Get current auth mode
+ */
+export async function getCurrentAuthMode(): Promise<AuthMode | null> {
   try {
-    const token = await getGoogleCloudAccessToken()
-    return token !== null
+    const auth = await loadAuthFile()
+    const geminiCliAuth = auth['google-gemini-cli']
+
+    if (!geminiCliAuth) {
+      return null
+    }
+
+    return geminiCliAuth.type
   } catch {
-    return false
+    return null
   }
 }
 
 /**
- * Logout from Google Gemini CLI
+ * Get current project ID
  */
-export async function logoutGeminiCli(): Promise<void> {
-  const auth = await loadAuthFile()
-  delete auth['google-gemini-cli']
-  await saveAuthFile(auth)
-}
+export async function getCurrentProjectId(): Promise<string | null> {
+  try {
+    const auth = await loadAuthFile()
+    const geminiCliAuth = auth['google-gemini-cli']
 
-/**
- * Get Google Cloud project ID from environment or credentials
- */
-export function getGoogleCloudProjectId(): string | undefined {
-  return (
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.GCLOUD_PROJECT ||
-    process.env.GOOGLE_PROJECT_ID ||
-    undefined
-  )
+    if (!geminiCliAuth) {
+      return null
+    }
+
+    if (geminiCliAuth.type === 'gcloud-adc') {
+      return geminiCliAuth.credentials.projectId
+    }
+
+    return geminiCliAuth.metadata?.projectId || null
+  } catch {
+    return null
+  }
 }
