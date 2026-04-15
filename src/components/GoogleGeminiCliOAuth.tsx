@@ -224,35 +224,6 @@ export function GoogleGeminiCliOAuth({
     startAuth()
   }, [oauthStatus.state, forceAuthMode])
 
-  // Handle method selection (for UI)
-  const handleMethodSelection = useCallback(async (authMode: AuthMode, manualProjectId?: string) => {
-    setOAuthStatus({ state: 'processing' })
-    
-    const enterpriseInfo = detectEnterpriseEnvironment()
-    // Use manual project ID if provided
-    if (manualProjectId) {
-      enterpriseInfo.projectId = manualProjectId
-    }
-    await performLogin(authMode, enterpriseInfo)
-  }, [])
-
-  // Handle project ID input from user
-  const handleProjectInput = useCallback(async (projectId: string) => {
-    if (!projectId.trim()) {
-      // If no project entered, continue with Google login
-      setOAuthStatus({ state: 'processing' })
-      const enterpriseInfo = detectEnterpriseEnvironment()
-      await performLogin('gemini-cli-google', enterpriseInfo)
-      return
-    }
-    
-    // Use the entered project ID
-    setOAuthStatus({ state: 'processing' })
-    const enterpriseInfo = detectEnterpriseEnvironment()
-    enterpriseInfo.projectId = projectId.trim()
-    await performLogin('gemini-cli-google', enterpriseInfo)
-  }, [])
-
   // Auto-close on success
   useEffect(() => {
     if (oauthStatus.state === 'success') {
