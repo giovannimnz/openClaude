@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Box, Text, Link } from '../ink.js'
+import { Box, Text, Link, useInput } from '../ink.js'
 import { Spinner } from './Spinner.js'
 import { logEvent } from '../services/analytics/index.js'
 import { logError } from '../utils/log.js'
@@ -37,6 +37,7 @@ type GoogleGeminiCliOAuthProps = {
 type OAuthStatus =
   | { state: 'idle' }
   | { state: 'selecting_method'; enterpriseInfo: EnterpriseInfo; hasGcloud: boolean }
+  | { state: 'entering_project'; enterpriseInfo: EnterpriseInfo; hasGcloud: boolean }
   | { state: 'waiting_for_login'; url: string; authMode: AuthMode }
   | { state: 'processing' }
   | { state: 'success' }
@@ -48,70 +49,8 @@ export function GoogleGeminiCliOAuth({
   forceAuthMode,
 }: GoogleGeminiCliOAuthProps): React.ReactNode {
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>({ state: 'idle' })
-
-  // Check login status on mount
-  useEffect(() => {
-    async function checkStatus() {
-      if (mode === 'logout') {
-        try {
-          await logoutGeminiCli()
-          setOAuthStatus({ state: 'success' })
-          logEvent('google_gemini_cli_logout_success', {})
-        } catch (error) {
-          logError(error)
-          setOAuthStatus({ state: 'error', message: String(error) })
-        }
-        return
-      }
-
-      const isLoggedIn = await isGeminiCliLoggedIn()
-      if (isLoggedIn) {
-        setOAuthStatus({ state: 'success' })
-        onDone(true)
-      } else {
-        setOAuthStatus({ state: 'selecting_method', enterpriseInfo: detectEnterpriseEnvironment(), hasGcloud: await checkGcloudAvailability() })
-      }
-    }
-    checkStatus()
-  }, [mode, onDone])
-
-  // Start authentication process
-  useEffect(() => {
-    async function startAuth() {
-      if (oauthStatus.state !== 'selecting_method') return
-
-      const enterpriseInfo = detectEnterpriseEnvironment()
-      const hasGcloud = await checkGcloudAvailability()
-
-      // If force mode is specified, use it directly
-      if (forceAuthMode) {
-        await performLogin(forceAuthMode, enterpriseInfo)
-        return
-      }
-
-      // If enterprise environment with project and gcloud, auto-select Vertex AI
-      if (enterpriseInfo.projectId && enterpriseInfo.location && hasGcloud) {
-        setOAuthStatus({ state: 'processing' })
-        await performLogin('vertex-ai', enterpriseInfo)
-        return
-      }
-
-      // Otherwise show selection (or auto-select Google login)
-      if (!enterpriseInfo.projectId) {
-        setOAuthStatus({ state: 'processing' })
-        await performLogin('gemini-cli-google', enterpriseInfo)
-      }
-    }
-    startAuth()
-  }, [oauthStatus.state, forceAuthMode])
-
-  // Handle method selection (for UI)
-  const handleMethodSelection = useCallback(async (authMode: AuthMode) => {
-    setOAuthStatus({ state: 'processing' })
-    
-    const enterpriseInfo = detectEnterpriseEnvironment()
-    await performLogin(authMode, enterpriseInfo)
-  }, [])
+  const [projectInput, setProjectInput] = useState('')
+  const [inputMode, setInputMode] = useState<'select' | 'project'>('select')
 
   // Perform login with selected mode
   const performLogin = useCallback(async (authMode: AuthMode, enterpriseInfo: EnterpriseInfo) => {
@@ -169,6 +108,151 @@ export function GoogleGeminiCliOAuth({
     }
   }, [])
 
+  // Handle project ID input from user
+  const handleProjectInput = useCallback(async (projectId: string) => {
+    if (!projectId.trim()) {
+      // If no project entered, continue with Google login
+      setOAuthStatus({ state: 'processing' })
+      const enterpriseInfo = detectEnterpriseEnvironment()
+      await performLogin('gemini-cli-google', enterpriseInfo)
+      return
+    }
+    
+    // Use the entered project ID
+    setOAuthStatus({ state: 'processing' })
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    enterpriseInfo.projectId = projectId.trim()
+    await performLogin('gemini-cli-google', enterpriseInfo)
+  }, [performLogin])
+
+  // Handle method selection (for UI)
+  const handleMethodSelection = useCallback(async (authMode: AuthMode, manualProjectId?: string) => {
+    setOAuthStatus({ state: 'processing' })
+    
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    // Use manual project ID if provided
+    if (manualProjectId) {
+      enterpriseInfo.projectId = manualProjectId
+    }
+    await performLogin(authMode, enterpriseInfo)
+  }, [performLogin])
+
+  // Handle user input
+  useInput((input, key) => {
+    if (oauthStatus.state === 'entering_project') {
+      if (key.return) {
+        // Enter pressed - process input
+        if (inputMode === 'project') {
+          handleProjectInput(projectInput)
+        } else {
+          // Selection mode - option 1 = continue without project, option 2 = enter project
+          if (projectInput === '1') {
+            handleProjectInput('')
+          } else if (projectInput === '2') {
+            setInputMode('project')
+            setProjectInput('')
+          }
+        }
+      } else if (key.backspace || key.delete) {
+        setProjectInput(prev => prev.slice(0, -1))
+      } else if (input && input >= ' ' && inputMode === 'project') {
+        // Only allow printable characters in project input
+        setProjectInput(prev => prev + input)
+      } else if (input && input >= ' ' && inputMode === 'select') {
+        // Capture selection number
+        setProjectInput(prev => prev + input)
+      }
+    }
+  })
+
+  // Check login status on mount
+  useEffect(() => {
+    async function checkStatus() {
+      if (mode === 'logout') {
+        try {
+          await logoutGeminiCli()
+          setOAuthStatus({ state: 'success' })
+          logEvent('google_gemini_cli_logout_success', {})
+        } catch (error) {
+          logError(error)
+          setOAuthStatus({ state: 'error', message: String(error) })
+        }
+        return
+      }
+
+      const isLoggedIn = await isGeminiCliLoggedIn()
+      if (isLoggedIn) {
+        setOAuthStatus({ state: 'success' })
+        onDone(true)
+      } else {
+        setOAuthStatus({ state: 'selecting_method', enterpriseInfo: detectEnterpriseEnvironment(), hasGcloud: await checkGcloudAvailability() })
+      }
+    }
+    checkStatus()
+  }, [mode, onDone])
+
+  // Start authentication process
+  useEffect(() => {
+    async function startAuth() {
+      if (oauthStatus.state !== 'selecting_method') return
+
+      const enterpriseInfo = detectEnterpriseEnvironment()
+      const hasGcloud = await checkGcloudAvailability()
+
+      // If force mode is specified, use it directly
+      if (forceAuthMode) {
+        await performLogin(forceAuthMode, enterpriseInfo)
+        return
+      }
+
+      // If enterprise environment with project and gcloud, auto-select Vertex AI
+      if (enterpriseInfo.projectId && enterpriseInfo.location && hasGcloud) {
+        setOAuthStatus({ state: 'processing' })
+        await performLogin('vertex-ai', enterpriseInfo)
+        return
+      }
+
+      // If no project detected, show option to enter manually or continue with Google login
+      if (!enterpriseInfo.projectId) {
+        setOAuthStatus({ state: 'entering_project', enterpriseInfo, hasGcloud })
+        return
+      }
+
+      // Otherwise show selection
+      setOAuthStatus({ state: 'selecting_method', enterpriseInfo, hasGcloud })
+    }
+    startAuth()
+  }, [oauthStatus.state, forceAuthMode])
+
+  // Handle method selection (for UI)
+  const handleMethodSelection = useCallback(async (authMode: AuthMode, manualProjectId?: string) => {
+    setOAuthStatus({ state: 'processing' })
+    
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    // Use manual project ID if provided
+    if (manualProjectId) {
+      enterpriseInfo.projectId = manualProjectId
+    }
+    await performLogin(authMode, enterpriseInfo)
+  }, [])
+
+  // Handle project ID input from user
+  const handleProjectInput = useCallback(async (projectId: string) => {
+    if (!projectId.trim()) {
+      // If no project entered, continue with Google login
+      setOAuthStatus({ state: 'processing' })
+      const enterpriseInfo = detectEnterpriseEnvironment()
+      await performLogin('gemini-cli-google', enterpriseInfo)
+      return
+    }
+    
+    // Use the entered project ID
+    setOAuthStatus({ state: 'processing' })
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    enterpriseInfo.projectId = projectId.trim()
+    await performLogin('gemini-cli-google', enterpriseInfo)
+  }, [])
+
   // Auto-close on success
   useEffect(() => {
     if (oauthStatus.state === 'success') {
@@ -184,6 +268,60 @@ export function GoogleGeminiCliOAuth({
     switch (oauthStatus.state) {
       case 'idle':
         return <Text>Checking authentication status...</Text>
+
+      case 'entering_project':
+        return (
+          <Box flexDirection="column" gap={1}>
+            <Text color="cyan">
+              🔐 Google Gemini CLI Authentication
+            </Text>
+            
+            {inputMode === 'project' ? (
+              <Box flexDirection="column" gap={1} marginTop={1}>
+                <Text color="yellow">
+                  📋 Informe o ID do projeto Google Cloud:
+                </Text>
+                <Text color="green">
+                  &gt; {projectInput || '_'}
+                </Text>
+                <Text dimColor marginTop={1}>
+                  Pressione Enter para confirmar ou Backspace para voltar
+                </Text>
+              </Box>
+            ) : (
+              <Box flexDirection="column" gap={1} marginTop={1}>
+                <Text color="yellow">
+                  ℹ️ Nenhum projeto do Google Cloud detectado
+                </Text>
+                <Text dimColor>
+                  Para usar com projeto corporativo, informe o ID do projeto.
+                </Text>
+                <Text dimColor>
+                  Exemplo: my-project-id (não o nome do projeto)
+                </Text>
+              </Box>
+            )}
+            
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              <Text dimColor>
+                Opções:
+              </Text>
+              
+              <Text color="green">
+                [1] Enter - Continuar sem projeto (Login pessoal)
+              </Text>
+              <Text color="blue">
+                [2] Informar ID do projeto Google Cloud
+              </Text>
+            </Box>
+            
+            <Text dimColor marginTop={1}>
+              {inputMode === 'project' 
+                ? 'Digite o ID do projeto e pressione Enter'
+                : 'Digite o número da opção e pressione Enter'}
+            </Text>
+          </Box>
+        )
 
       case 'selecting_method':
         return (
