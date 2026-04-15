@@ -7,7 +7,7 @@
  * Features:
  * - PKCE OAuth flow (standard)
  * - Enterprise flow via gcloud ADC
- * - Automatic token refresh
+ * - Automatic token refresh with retry logic
  * - Secure credential storage
  * - Google Cloud Code Assist API support
  */
@@ -302,6 +302,40 @@ async function saveAuthFile(auth: AuthFile): Promise<void> {
 }
 
 /**
+ * Retry function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      
+      // Don't retry on certain errors
+      if (lastError.message.includes('invalid_grant') || 
+          lastError.message.includes('invalid_client') ||
+          lastError.message.includes('unauthorized_client')) {
+        throw lastError
+      }
+      
+      // Exponential backoff
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  
+  throw lastError || new Error('Retry failed')
+}
+
+/**
  * Exchange authorization code for tokens
  */
 async function exchangeCodeForToken(code: string, codeVerifier: string) {
@@ -320,55 +354,77 @@ async function exchangeCodeForToken(code: string, codeVerifier: string) {
   })
 
   if (!response.ok) {
-    throw new Error(`Token exchange failed: ${response.statusText}`)
+    const errorText = await response.text()
+    throw new Error(`Token exchange failed (${response.status}): ${errorText}`)
   }
 
   return response.json()
 }
 
 /**
- * Refresh access token
+ * Refresh access token with retry logic
  */
-async function refreshAccessToken(refreshToken: string) {
-  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      client_id: GEMINI_CLI_CLIENT_ID,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  })
+async function refreshAccessToken(refreshToken: string): Promise<any> {
+  return retryWithBackoff(async () => {
+    const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: GEMINI_CLI_CLIENT_ID,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    })
 
-  if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.statusText}`)
-  }
+    if (!response.ok) {
+      const errorText = await response.text()
+      
+      // Handle specific error cases
+      if (response.status === 400 && errorText.includes('invalid_grant')) {
+        throw new Error('Refresh token expired or revoked. Please re-authenticate.')
+      }
+      
+      if (response.status === 401) {
+        throw new Error('Unauthorized. Please check your credentials.')
+      }
+      
+      throw new Error(`Token refresh failed (${response.status}): ${errorText}`)
+    }
 
-  return response.json()
+    return response.json()
+  }, 3, 1000) // 3 retries with 1s base delay
 }
 
 /**
- * Get access token with automatic refresh
+ * Get access token with automatic refresh and retry
  */
-export async function getGoogleCloudAccessToken(): Promise<string | null> {
+export async function getGoogleCloudAccessToken(): Promise<string> {
   try {
     const auth = await loadAuthFile()
     const geminiCliAuth = auth['google-gemini-cli']
 
     if (!geminiCliAuth) {
-      return null
+      throw new Error('No authentication credentials found. Please run `claude /auth login`.')
     }
 
     // Handle gcloud ADC
     if (geminiCliAuth.type === 'gcloud-adc') {
-      return await getADCAccessToken()
+      const token = await retryWithBackoff(async () => {
+        const accessToken = await getADCAccessToken()
+        if (!accessToken) {
+          throw new Error('Failed to get access token from gcloud ADC.')
+        }
+        return accessToken
+      }, 2, 1000)
+      
+      return token
     }
 
     // Handle OAuth
     if (geminiCliAuth.type !== 'oauth') {
-      return null
+      throw new Error('Invalid authentication type')
     }
 
     const { credentials } = geminiCliAuth
@@ -378,7 +434,7 @@ export async function getGoogleCloudAccessToken(): Promise<string | null> {
       return credentials.access_token
     }
 
-    // Token expired, refresh it
+    // Token expired, refresh it with retry logic
     try {
       const newTokens = await refreshAccessToken(credentials.refresh_token)
       
@@ -386,7 +442,7 @@ export async function getGoogleCloudAccessToken(): Promise<string | null> {
       const updatedCredentials: GoogleOAuthCredential['credentials'] = {
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token || credentials.refresh_token,
-        expiry_date: Date.now() + newTokens.expires_in * 1000,
+        expiry_date: Date.now() + (newTokens.expires_in || 3600) * 1000,
         token_type: newTokens.token_type,
         scope: newTokens.scope,
       }
@@ -402,9 +458,16 @@ export async function getGoogleCloudAccessToken(): Promise<string | null> {
 
       return newTokens.access_token
     } catch (error) {
+      // If refresh fails, suggest re-authentication
+      if (error instanceof Error && error.message.includes('invalid_grant')) {
+        throw new Error('Authentication expired. Please run `claude /auth login` to re-authenticate.')
+      }
       throw new Error(`Failed to refresh Google Cloud token: ${error}`)
     }
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw new Error(`Failed to get Google Cloud access token: ${error}`)
   }
 }
@@ -507,9 +570,11 @@ export async function loginGeminiCliOAuth(
           return
         }
 
-        // Exchange code for tokens
+        // Exchange code for tokens with retry
         try {
-          const tokens = await exchangeCodeForToken(code!, codeVerifier)
+          const tokens = await retryWithBackoff(async () => {
+            return await exchangeCodeForToken(code!, codeVerifier)
+          }, 3, 1000)
           
           // Get enterprise info
           const enterpriseInfo = detectEnterpriseEnvironment()
@@ -521,7 +586,7 @@ export async function loginGeminiCliOAuth(
             credentials: {
               access_token: tokens.access_token,
               refresh_token: tokens.refresh_token,
-              expiry_date: Date.now() + tokens.expires_in * 1000,
+              expiry_date: Date.now() + (tokens.expires_in || 3600) * 1000,
               token_type: tokens.token_type,
               scope: tokens.scope,
             },
@@ -552,17 +617,18 @@ export async function loginGeminiCliOAuth(
             success: true,
             accessToken: tokens.access_token,
             refreshToken: tokens.refresh_token,
-            expiryDate: Date.now() + tokens.expires_in * 1000,
+            expiryDate: Date.now() + (tokens.expires_in || 3600) * 1000,
             authMode: 'oauth',
             projectId: enterpriseInfo.projectId
           })
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
           res.writeHead(500, { 'Content-Type': 'text/plain' })
-          res.end(`Authentication failed: ${error}`)
+          res.end(`Authentication failed: ${errorMessage}`)
           server.close()
           resolve({
             success: false,
-            error: String(error),
+            error: errorMessage,
           })
         }
       } else {
