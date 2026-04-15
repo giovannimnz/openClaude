@@ -137,14 +137,12 @@ async function main(): Promise<void> {
   // Print the gradient startup screen before the Ink UI loads
   const { printStartupScreen } = await import('../components/StartupScreen.js')
   printStartupScreen()
-  console.log('[DEBUG] Startup screen printed')
 
   // For all other paths, load the startup profiler
   const {
     profileCheckpoint
   } = await import('../utils/startupProfiler.js');
   profileCheckpoint('cli_entry');
-  console.log('[DEBUG] Startup profiler loaded, about to check for special flags...');
 
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.
   // Used by prompt sensitivity evals to extract the system prompt at a specific commit.
@@ -395,9 +393,7 @@ async function main(): Promise<void> {
     main: cliMain
   } = await import('../main.js');
   profileCheckpoint('cli_after_main_import');
-  console.log('[DEBUG] About to call cliMain()...');
   await cliMain();
-  console.log('[DEBUG] cliMain() completed');
   profileCheckpoint('cli_after_main_complete');
 }
 
