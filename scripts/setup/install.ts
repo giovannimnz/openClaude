@@ -11,10 +11,10 @@
  * Usage: bun run install:setup
  */
 
-import { join, homedir } from 'node:path'
+import { join } from 'node:path'
 import { mkdir, writeFile, chmod } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { platform } from 'node:os'
+import { homedir, platform } from 'node:os'
 import { spawn } from 'node:child_process'
 
 // Colors for terminal output
