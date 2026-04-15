@@ -84,10 +84,17 @@ const LOGO_CLAUDE = [
 // ─── Provider detection ───────────────────────────────────────────────────────
 
 function detectProvider(): { name: string; model: string; baseUrl: string; isLocal: boolean } {
+  const useGeminiCli = process.env.CLAUDE_CODE_USE_GEMINI_CLI === '1' || process.env.CLAUDE_CODE_USE_GEMINI_CLI === 'true'
   const useGemini = process.env.CLAUDE_CODE_USE_GEMINI === '1' || process.env.CLAUDE_CODE_USE_GEMINI === 'true'
   const useGithub = process.env.CLAUDE_CODE_USE_GITHUB === '1' || process.env.CLAUDE_CODE_USE_GITHUB === 'true'
   const useOpenAI = process.env.CLAUDE_CODE_USE_OPENAI === '1' || process.env.CLAUDE_CODE_USE_OPENAI === 'true'
   const useMistral = process.env.CLAUDE_CODE_USE_MISTRAL === '1' || process.env.CLAUDE_CODE_USE_MISTRAL === 'true'
+
+  if (useGeminiCli) {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-pro'
+    const baseUrl = 'https://cloudcodeassist.googleapis.com/v1'
+    return { name: 'Google Gemini CLI', model, baseUrl, isLocal: false }
+  }
 
   if (useGemini) {
     const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
@@ -138,11 +145,11 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
     return { name, model: displayModel, baseUrl, isLocal }
   }
 
-  // Default: Anthropic - check settings.model first, then env vars
+  // Default: Google Gemini CLI - check settings.model first, then env vars
   const settings = getSettings_DEPRECATED() || {}
-  const modelSetting = settings.model || process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
+  const modelSetting = settings.model || process.env.GEMINI_MODEL || 'gemini-2.5-pro'
   const resolvedModel = parseUserSpecifiedModel(modelSetting)
-  return { name: 'Anthropic', model: resolvedModel, baseUrl: 'https://api.anthropic.com', isLocal: false }
+  return { name: 'Google Gemini CLI', model: resolvedModel, baseUrl: 'https://cloudcodeassist.googleapis.com/v1', isLocal: false }
 }
 
 // ─── Box drawing ──────────────────────────────────────────────────────────────

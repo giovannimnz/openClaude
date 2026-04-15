@@ -13,7 +13,6 @@
  */
 
 export const VALID_PROVIDERS = [
-  'anthropic',
   'openai',
   'gemini',
   'google-gemini-cli',
@@ -91,10 +90,6 @@ export function applyProviderFlag(
   const model = parseModelFlag(args)
 
   switch (provider as ProviderFlagName) {
-    case 'anthropic':
-      // Default — no env vars needed
-      break
-
     case 'openai':
       process.env.CLAUDE_CODE_USE_OPENAI = '1'
       if (model) process.env.OPENAI_MODEL = model

@@ -3,7 +3,6 @@ import { shouldUseCodexTransport } from '../../services/api/providerConfig.js'
 import { isEnvTruthy } from '../envUtils.js'
 
 export type APIProvider =
-  | 'firstParty'
   | 'bedrock'
   | 'vertex'
   | 'foundry'
@@ -45,7 +44,7 @@ export function isProviderConfigured(): boolean {
 }
 
 export function usesAnthropicAccountFlow(): boolean {
-  return getAPIProvider() === 'firstParty'
+  return false
 }
 function isCodexModel(): boolean {
   return shouldUseCodexTransport(
