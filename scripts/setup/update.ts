@@ -73,17 +73,55 @@ async function runCommand(
   })
 }
 
-async function checkGitStatus(): Promise<{ isRepo: boolean; hasChanges: boolean }> {
+async function checkGitStatus(): Promise<{ isRepo: boolean; hasChanges: boolean; stashNeeded: boolean }> {
   const result = await runCommand('git', ['status', '--porcelain'], process.cwd(), true)
   
   if (!result.success) {
-    return { isRepo: false, hasChanges: false }
+    return { isRepo: false, hasChanges: false, stashNeeded: false }
   }
 
+  const hasChanges = result.stdout && result.stdout.trim().length > 0
+  
   return {
     isRepo: true,
-    hasChanges: result.stdout && result.stdout.trim().length > 0,
+    hasChanges,
+    stashNeeded: hasChanges,
   }
+}
+
+async function stashChanges(): Promise<{ success: boolean; stashName: string }> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const stashName = `auto-stash-before-update-${timestamp}`
+  
+  log(`Stashing local changes as "${stashName}"...`, colors.yellow)
+  
+  // Create stash with name
+  const stashResult = await runCommand('git', ['stash', 'push', '-m', stashName], process.cwd(), false)
+  
+  if (!stashResult.success) {
+    log('❌ Failed to stash changes', colors.red)
+    return { success: false, stashName }
+  }
+  
+  log('✅ Changes stashed successfully', colors.green)
+  log(`💡 To restore stashed changes later, run: git stash pop`, colors.blue)
+  
+  return { success: true, stashName }
+}
+
+async function restoreStashedChanges(): Promise<boolean> {
+  log('Restoring stashed changes...', colors.yellow)
+  
+  const result = await runCommand('git', ['stash', 'pop'], process.cwd(), false)
+  
+  if (!result.success) {
+    log('❌ Failed to restore stashed changes', colors.red)
+    log('💡 You can manually restore with: git stash pop', colors.yellow)
+    return false
+  }
+  
+  log('✅ Stashed changes restored successfully', colors.green)
+  return true
 }
 
 async function getCurrentBranch(): Promise<string> {
@@ -176,119 +214,144 @@ async function backupConfig(): Promise<void> {
 async function main(): Promise<void> {
   const projectRoot = process.cwd()
   const totalSteps = 6
+  let stashedChanges = false
+  let stashName = ''
 
   log('╔════════════════════════════════════════════════════════════╗', colors.cyan)
   log('║           openClaude Update Script                         ║', colors.cyan)
   log('╚════════════════════════════════════════════════════════════╝', colors.cyan)
   log('')
 
-  // Check git status
-  logStep(1, totalSteps, 'Checking git status...')
-  const gitStatus = await checkGitStatus()
-  
-  if (!gitStatus.isRepo) {
-    log('❌ Not a git repository. Update requires git.', colors.red)
-    log('💡 You can manually update by cloning the latest version:', colors.yellow)
-    log('   git clone https://github.com/giovannimnz/openClaude.git', colors.yellow)
-    process.exit(1)
+  try {
+    // Check git status
+    logStep(1, totalSteps, 'Checking git status...')
+    const gitStatus = await checkGitStatus()
+    
+    if (!gitStatus.isRepo) {
+      log('❌ Not a git repository. Update requires git.', colors.red)
+      log('💡 You can manually update by cloning the latest version:', colors.yellow)
+      log('   git clone https://github.com/giovannimnz/openClaude.git', colors.yellow)
+      process.exit(1)
+    }
+
+    if (gitStatus.hasChanges) {
+      log('⚠️  You have uncommitted changes!', colors.yellow)
+      log('Automatically stashing changes to continue with update...', colors.cyan)
+      
+      const stashResult = await stashChanges()
+      if (!stashResult.success) {
+        log('❌ Failed to stash changes. Update aborted.', colors.red)
+        log('💡 You can manually stash with: git stash', colors.yellow)
+        process.exit(1)
+      }
+      
+      stashedChanges = true
+      stashName = stashResult.stashName
+      log('✅ Changes stashed automatically', colors.green)
+    }
+
+    const currentBranch = await getCurrentBranch()
+    const currentVersion = await getCurrentVersion()
+    const latestVersion = await getLatestVersion()
+
+    log(`  Repository: ${gitStatus.isRepo ? '✅ Valid' : '❌ Invalid'}`, gitStatus.isRepo ? colors.green : colors.red)
+    log(`  Branch: ${currentBranch}`, colors.blue)
+    log(`  Current version: ${currentVersion}`, colors.blue)
+    log(`  Latest version: ${latestVersion}`, colors.blue)
+    if (stashedChanges) {
+      log(`  🗄️  Stashed: ${stashName}`, colors.yellow)
+    }
+    log('✅ Git status OK', colors.green)
+    log('')
+
+    // Backup config
+    logStep(2, totalSteps, 'Backing up configuration...')
+    await backupConfig()
+    log('✅ Configuration backed up', colors.green)
+    log('')
+
+    // Pull latest changes
+    logStep(3, totalSteps, 'Pulling latest changes...')
+    const pullSuccess = await runCommand('git', ['pull', 'origin', currentBranch], projectRoot)
+    if (!pullSuccess) {
+      log('❌ Failed to pull latest changes', colors.red)
+      process.exit(1)
+    }
+    log('✅ Latest changes pulled', colors.green)
+    log('')
+
+    // Update dependencies
+    logStep(4, totalSteps, 'Updating dependencies...')
+    const depsSuccess = await runCommand('bun', ['install'], projectRoot)
+    if (!depsSuccess) {
+      log('❌ Failed to update dependencies', colors.red)
+      process.exit(1)
+    }
+    log('✅ Dependencies updated', colors.green)
+    log('')
+
+    // Clean caches and rebuild
+    logStep(5, totalSteps, 'Cleaning caches and rebuilding...')
+    await cleanCaches(projectRoot)
+    
+    const buildSuccess = await runCommand('bun', ['run', 'build'], projectRoot)
+    if (!buildSuccess) {
+      log('❌ Failed to rebuild project', colors.red)
+      process.exit(1)
+    }
+    log('✅ Build completed', colors.green)
+    log('')
+
+    // Verify update
+    logStep(6, totalSteps, 'Verifying update...')
+    const verified = await verifyUpdate(projectRoot)
+    if (!verified) {
+      log('❌ Update verification failed', colors.red)
+      log('💡 You can restore the backup: cp package.json.backup package.json', colors.yellow)
+      process.exit(1)
+    }
+    log('✅ Update verified', colors.green)
+    log('')
+
+    // Get new version
+    const newVersion = await getCurrentVersion()
+
+    // Success message
+    log('╔════════════════════════════════════════════════════════════╗', colors.green)
+    log('║           Update Successful! 🎉                              ║', colors.green)
+    log('╚════════════════════════════════════════════════════════════╝', colors.green)
+    log('')
+    log('📋 Summary:', colors.blue)
+    log(`  📁 Project location: ${projectRoot}`, colors.yellow)
+    log(`  📦 Previous version: ${currentVersion}`, colors.yellow)
+    log(`  ✨ New version: ${newVersion}`, colors.yellow)
+    if (currentVersion !== newVersion) {
+      log(`  🔄 Updated from ${currentVersion} to ${newVersion}`, colors.magenta)
+    }
+    if (stashedChanges) {
+      log(`  🗄️  Stashed changes: ${stashName}`, colors.yellow)
+      log(`  💡 Restore with: git stash pop`, colors.blue)
+    }
+    log('')
+    log('🚀 You can now use the updated version:', colors.blue)
+    log('  node dist/cli.mjs', colors.yellow)
+    log('')
+    log('📚 Check what\'s new:', colors.blue)
+    log('  git log --oneline @{1}..HEAD', colors.yellow)
+    log('')
+    log('💡 Tips:', colors.blue)
+    log('  - Review the changelog for new features', colors.yellow)
+    log('  - Update your provider profiles if needed', colors.yellow)
+    log('  - Run diagnostics: bun run doctor:runtime', colors.yellow)
+    log('')
+  } finally {
+    // Restore stashed changes if they were stashed
+    if (stashedChanges) {
+      log('')
+      log('🔄 Restoring stashed changes...', colors.cyan)
+      await restoreStashedChanges()
+    }
   }
-
-  if (gitStatus.hasChanges) {
-    log('⚠️  You have uncommitted changes!', colors.yellow)
-    log('Please commit or stash your changes before updating:', colors.yellow)
-    log('  git add . && git commit -m "Backup before update"', colors.yellow)
-    log('  or', colors.yellow)
-    log('  git stash', colors.yellow)
-    process.exit(1)
-  }
-
-  const currentBranch = await getCurrentBranch()
-  const currentVersion = await getCurrentVersion()
-  const latestVersion = await getLatestVersion()
-
-  log(`  Repository: ${gitStatus.isRepo ? '✅ Valid' : '❌ Invalid'}`, gitStatus.isRepo ? colors.green : colors.red)
-  log(`  Branch: ${currentBranch}`, colors.blue)
-  log(`  Current version: ${currentVersion}`, colors.blue)
-  log(`  Latest version: ${latestVersion}`, colors.blue)
-  log('✅ Git status OK', colors.green)
-  log('')
-
-  // Backup config
-  logStep(2, totalSteps, 'Backing up configuration...')
-  await backupConfig()
-  log('✅ Configuration backed up', colors.green)
-  log('')
-
-  // Pull latest changes
-  logStep(3, totalSteps, 'Pulling latest changes...')
-  const pullSuccess = await runCommand('git', ['pull', 'origin', currentBranch], projectRoot)
-  if (!pullSuccess) {
-    log('❌ Failed to pull latest changes', colors.red)
-    process.exit(1)
-  }
-  log('✅ Latest changes pulled', colors.green)
-  log('')
-
-  // Update dependencies
-  logStep(4, totalSteps, 'Updating dependencies...')
-  const depsSuccess = await runCommand('bun', ['install'], projectRoot)
-  if (!depsSuccess) {
-    log('❌ Failed to update dependencies', colors.red)
-    process.exit(1)
-  }
-  log('✅ Dependencies updated', colors.green)
-  log('')
-
-  // Clean caches and rebuild
-  logStep(5, totalSteps, 'Cleaning caches and rebuilding...')
-  await cleanCaches(projectRoot)
-  
-  const buildSuccess = await runCommand('bun', ['run', 'build'], projectRoot)
-  if (!buildSuccess) {
-    log('❌ Failed to rebuild project', colors.red)
-    process.exit(1)
-  }
-  log('✅ Build completed', colors.green)
-  log('')
-
-  // Verify update
-  logStep(6, totalSteps, 'Verifying update...')
-  const verified = await verifyUpdate(projectRoot)
-  if (!verified) {
-    log('❌ Update verification failed', colors.red)
-    log('💡 You can restore the backup: cp package.json.backup package.json', colors.yellow)
-    process.exit(1)
-  }
-  log('✅ Update verified', colors.green)
-  log('')
-
-  // Get new version
-  const newVersion = await getCurrentVersion()
-
-  // Success message
-  log('╔════════════════════════════════════════════════════════════╗', colors.green)
-  log('║           Update Successful! 🎉                              ║', colors.green)
-  log('╚════════════════════════════════════════════════════════════╝', colors.green)
-  log('')
-  log('📋 Summary:', colors.blue)
-  log(`  📁 Project location: ${projectRoot}`, colors.yellow)
-  log(`  📦 Previous version: ${currentVersion}`, colors.yellow)
-  log(`  ✨ New version: ${newVersion}`, colors.yellow)
-  if (currentVersion !== newVersion) {
-    log(`  🔄 Updated from ${currentVersion} to ${newVersion}`, colors.magenta)
-  }
-  log('')
-  log('🚀 You can now use the updated version:', colors.blue)
-  log('  node dist/cli.mjs', colors.yellow)
-  log('')
-  log('📚 Check what\'s new:', colors.blue)
-  log('  git log --oneline @{1}..HEAD', colors.yellow)
-  log('')
-  log('💡 Tips:', colors.blue)
-  log('  - Review the changelog for new features', colors.yellow)
-  log('  - Update your provider profiles if needed', colors.yellow)
-  log('  - Run diagnostics: bun run doctor:runtime', colors.yellow)
-  log('')
 }
 
 main().catch((error) => {
