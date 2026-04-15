@@ -97,10 +97,15 @@ export function showSetupDialog<T = void>(root: Root, renderer: (done: (result: 
  * Handles the common epilogue: start deferred prefetches, wait for exit, graceful shutdown.
  */
 export async function renderAndRun(root: Root, element: React.ReactNode): Promise<void> {
-  root.render(element);
-  startDeferredPrefetches();
-  await root.waitUntilExit();
-  await gracefulShutdown(0);
+  try {
+    root.render(element);
+    startDeferredPrefetches();
+    await root.waitUntilExit();
+    await gracefulShutdown(0);
+  } catch (error) {
+    console.error('Error in renderAndRun:', error);
+    throw error;
+  }
 }
 export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
   if ("production" === 'test' || isEnvTruthy(false) || process.env.IS_DEMO // Skip onboarding in demo mode

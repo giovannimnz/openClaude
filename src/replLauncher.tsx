@@ -10,13 +10,21 @@ type AppWrapperProps = {
   initialState: AppState;
 };
 export async function launchRepl(root: Root, appProps: AppWrapperProps, replProps: REPLProps, renderAndRun: (root: Root, element: React.ReactNode) => Promise<void>): Promise<void> {
-  const {
-    App
-  } = await import('./components/App.js');
-  const {
-    REPL
-  } = await import('./screens/REPL.js');
-  await renderAndRun(root, <App {...appProps}>
-      <REPL {...replProps} />
-    </App>);
+  try {
+    console.log('launchRepl: Starting REPL...');
+    const {
+      App
+    } = await import('./components/App.js');
+    const {
+      REPL
+    } = await import('./screens/REPL.js');
+    console.log('launchRepl: App and REPL imported successfully');
+    await renderAndRun(root, <App {...appProps}>
+        <REPL {...replProps} />
+      </App>);
+    console.log('launchRepl: REPL rendered successfully');
+  } catch (error) {
+    console.error('Error in launchRepl:', error);
+    throw error;
+  }
 }
