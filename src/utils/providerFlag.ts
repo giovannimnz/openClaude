@@ -16,6 +16,7 @@ export const VALID_PROVIDERS = [
   'anthropic',
   'openai',
   'gemini',
+  'google-gemini-cli',
   'mistral',
   'github',
   'bedrock',
@@ -81,6 +82,7 @@ export function applyProviderFlag(
 
   delete process.env.CLAUDE_CODE_USE_OPENAI
   delete process.env.CLAUDE_CODE_USE_GEMINI
+  delete process.env.CLAUDE_CODE_USE_GEMINI_CLI
   delete process.env.CLAUDE_CODE_USE_MISTRAL
   delete process.env.CLAUDE_CODE_USE_GITHUB
   delete process.env.CLAUDE_CODE_USE_BEDROCK
@@ -100,6 +102,11 @@ export function applyProviderFlag(
 
     case 'gemini':
       process.env.CLAUDE_CODE_USE_GEMINI = '1'
+      if (model) process.env.GEMINI_MODEL = model
+      break
+
+    case 'google-gemini-cli':
+      process.env.CLAUDE_CODE_USE_GEMINI_CLI = '1'
       if (model) process.env.GEMINI_MODEL = model
       break
 

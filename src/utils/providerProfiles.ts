@@ -13,6 +13,7 @@ export type ProviderPreset =
   | 'moonshotai'
   | 'deepseek'
   | 'gemini'
+  | 'google-gemini-cli'
   | 'mistral'
   | 'together'
   | 'groq'

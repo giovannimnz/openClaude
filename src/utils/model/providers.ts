@@ -12,26 +12,29 @@ export type APIProvider =
   | 'github'
   | 'codex'
   | 'mistral'
+  | 'google-gemini-cli'
 
 export function getAPIProvider(): APIProvider | undefined {
-  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
-    ? 'gemini'
-    :
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
-    ? 'mistral'
-    : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-      ? 'github'
-      : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-        ? isCodexModel()
-          ? 'codex'
-          : 'openai'
-        : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
-          ? 'bedrock'
-          : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
-            ? 'vertex'
-            : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-              ? 'foundry'
-              : undefined // No provider configured - will show setup flow
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI_CLI)
+    ? 'google-gemini-cli'
+    : isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
+      ? 'gemini'
+      :
+      isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
+      ? 'mistral'
+      : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
+        ? 'github'
+        : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
+          ? isCodexModel()
+            ? 'codex'
+            : 'openai'
+          : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
+            ? 'bedrock'
+            : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
+              ? 'vertex'
+              : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+                ? 'foundry'
+                : undefined // No provider configured - will show setup flow
 }
 
 /**
