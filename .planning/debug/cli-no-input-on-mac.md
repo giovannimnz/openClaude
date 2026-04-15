@@ -47,11 +47,15 @@ No error messages displayed. The CLI just shows the startup screen and then noth
 
 **hypothesis:** The REPL component is not being rendered or stdin is not properly connected after the startup screen is printed.
 
-**test:** Check if the launchRepl function is being called and if stdin/TTY handling is correct.
+**test:** Added comprehensive debug logging to track execution flow:
+- After startup screen is printed
+- Before/after cliMain() call  
+- At start of main() function
+- Before launchRepl() call
 
-**expecting:** launchRepl should render the App component with REPL, which should show the interactive input.
+**expecting:** The logs will show exactly where execution stops, revealing if launchRepl is called and if it completes.
 
-**next_action:** Investigate the flow from startup screen to REPL rendering.
+**next_action:** User needs to test with the new debug version and share the console output to see which logs appear.
 
 ## Evidence
 
@@ -59,8 +63,36 @@ No error messages displayed. The CLI just shows the startup screen and then noth
 - Startup screen is printed in entrypoints/cli.tsx via printStartupScreen()
 - REPL is launched via launchRepl() in main.tsx
 - Previous fix commit afed73f addressed similar keyboard freeze issues on Windows and Mac
+- Added debug logging throughout the execution flow (commit 0c38317):
+  * After startup screen print
+  * Before/after cliMain() call
+  * At start of main() function
+  * Before launchRepl() call
+  * Inside launchRepl() function
+  * Inside renderAndRun() function
 
 ## Eliminated
 
 ## Resolution
 
+**Status:** Aguardando teste com versão de debug
+
+**Próximos passos para o usuário:**
+1. Fazer git pull para obter a versão mais recente com debug logging
+2. Rodar `bun run build` para compilar
+3. Executar `node dist/cli.mjs`
+4. Copiar TODO o output do console (incluindo as mensagens [DEBUG])
+5. Compartilhar o output para que possamos identificar onde o fluxo está falhando
+
+**O que esperamos ver:**
+As mensagens [DEBUG] devem mostrar o fluxo completo:
+- `[DEBUG] Startup screen printed`
+- `[DEBUG] About to call cliMain()...`
+- `[DEBUG] cliMain() completed`
+- `[DEBUG] main() function started`
+- `[DEBUG] About to call launchRepl with root and sessionConfig`
+- `[DEBUG] launchRepl: Starting REPL...`
+- `[DEBUG] launchRepl: App and REPL imported successfully`
+- `[DEBUG] launchRepl: REPL rendered successfully`
+
+Se alguma dessas mensagens não aparecer, saberemos exatamente onde o problema está ocorrendo.
