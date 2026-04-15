@@ -26,18 +26,18 @@ openclaude /provider
 
 #### Using the wrapper command:
 ```bash
-openclaude
+claude
 ```
 
 #### Using direct paths:
 ```bash
 # Unix/Linux/macOS
-./bin/openclaude
+./bin/claude
 
 # Windows
-bin\openclaude.bat
+bin\claude.bat
 # or
-.\bin\openclaude.ps1
+.\bin\claude.ps1
 
 # Direct node execution
 node dist/cli.mjs
@@ -52,38 +52,38 @@ bun run dev
 
 ### Provider Management
 ```bash
-openclaude /provider              # Configure providers
-openclaude /provider list        # List saved profiles
-openclaude /provider remove      # Remove a profile
+claude /provider              # Configure providers
+claude /provider list        # List saved profiles
+claude /provider remove      # Remove a profile
 ```
 
 ### Authentication
 ```bash
-openclaude /auth login           # Login to auth providers
-openclaude /auth status          # Check auth status
-openclaude /auth logout          # Logout from auth providers
+claude /auth login           # Login to auth providers
+claude /auth status          # Check auth status
+claude /auth logout          # Logout from auth providers
 ```
 
 ### Project Management
 ```bash
-openclaude /project new          # Create new project
-openclaude /project list         # List projects
-openclaude /project switch       # Switch between projects
+claude /project new          # Create new project
+claude /project list         # List projects
+claude /project switch       # Switch between projects
 ```
 
 ### Help and Information
 ```bash
-openclaude --help                # Show help
-openclaude --version             # Show version
-openclaude /help                 # Show command help
+claude --help                # Show help
+claude --version             # Show version
+claude /help                 # Show command help
 ```
 
 ### Advanced Features
 ```bash
-openclaude /agent                # Agent commands
-openclaude /task                 # Task management
-openclaude /mcp                  # MCP server management
-openclaude /settings             # Configuration settings
+claude /agent                # Agent commands
+claude /task                 # Task management
+claude /mcp                  # MCP server management
+claude /settings             # Configuration settings
 ```
 
 ## Platform-Specific Setup
@@ -96,21 +96,21 @@ openclaude /settings             # Configuration settings
 set PATH=%PATH%;C:\path\to\openClaude\bin
 
 # Now you can run from anywhere
-openclaude
+claude
 ```
 
 #### Method 2: Create Global Symlink (Admin)
 ```powershell
 # Run as Administrator
 cd C:\path\to\openClaude\bin
-mklink openclaude.bat openclaude.bat
-mklink openclaude.ps1 openclaude.ps1
+mklink claude.bat claude.bat
+mklink claude.ps1 claude.ps1
 ```
 
 #### Method 3: Use from project directory
 ```powershell
 cd C:\path\to\openClaude
-.\bin\openclaude.bat
+.\bin\claude.bat
 ```
 
 ### macOS/Linux
@@ -124,17 +124,17 @@ export PATH="$(pwd)/bin:$PATH"
 source ~/.bashrc  # or source ~/.zshrc
 
 # Now you can run from anywhere
-openclaude
+claude
 ```
 
 #### Method 2: Create Global Symlink
 ```bash
-sudo ln -sf $(pwd)/bin/openclaude /usr/local/bin/openclaude
+sudo ln -sf $(pwd)/bin/claude /usr/local/bin/claude
 ```
 
 #### Method 3: Use from project directory
 ```bash
-./bin/openclaude
+./bin/claude
 ```
 
 ## Authentication Methods
@@ -147,26 +147,26 @@ sudo ln -sf $(pwd)/bin/openclaude /usr/local/bin/openclaude
 export GOOGLE_CLOUD_PROJECT="your-project-id"
 
 # Login via gcloud ADC
-openclaude /auth login
+claude /auth login
 # Select [1] Gcloud ADC
 ```
 
 #### Standard OAuth - For Personal Use
 ```bash
-openclaude /auth login
+claude /auth login
 # Select [2] OAuth Browser Login
 ```
 
 ### Anthropic Claude
 ```bash
-openclaude /auth login
+claude /auth login
 # Select "Claude"
 # Follow browser authentication
 ```
 
 ### Other Providers
 ```bash
-openclaude /provider
+claude /provider
 # Configure OpenAI, Ollama, or other providers
 ```
 
@@ -221,8 +221,8 @@ bun run build
 bun run setup:wrappers
 
 # Try direct path
-./bin/openclaude  # Unix/macOS
-.\bin\openclaude.bat  # Windows
+./bin/claude  # Unix/macOS
+.\bin\claude.bat  # Windows
 ```
 
 ### Build Errors
@@ -236,8 +236,8 @@ bun run build
 ### Permission Issues (Unix/macOS)
 ```bash
 # Make scripts executable
-chmod +x bin/openclaude
-chmod +x bin/openclaude.sh
+chmod +x bin/claude
+chmod +x bin/claude.sh
 ```
 
 ### Windows Execution Policy
@@ -251,17 +251,17 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### Quick Access Aliases
 ```bash
 # Add to your shell config (.bashrc, .zshrc, etc.)
-alias oc='openclaude'
-alias ocp='openclaude /provider'
-alias oca='openclaude /auth login'
+alias oc='claude'
+alias ocp='claude /provider'
+alias oca='claude /auth login'
 ```
 
 ### Multiple Profiles
 ```bash
 # Create different profiles for different projects
-openclaude /provider create profile1 --provider openai --model gpt-4
-openclaude /provider create profile2 --provider ollama --model llama3
-openclaude /provider use profile1
+claude /provider create profile1 --provider openai --model gpt-4
+claude /provider create profile2 --provider ollama --model llama3
+claude /provider use profile1
 ```
 
 ### Update and Maintenance
@@ -280,9 +280,9 @@ bun run hardening:check
 
 ### Built-in Help
 ```bash
-openclaude --help           # General help
-openclaude /help            # Command help
-openclaude /provider --help # Provider-specific help
+claude --help           # General help
+claude /help            # Command help
+claude /provider --help # Provider-specific help
 ```
 
 ### Documentation

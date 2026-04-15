@@ -1,8 +1,8 @@
 /**
- * Setup OpenClaude Command Wrappers
+ * Setup Claude Command Wrappers
  * 
  * Creates symbolic links and sets up executable permissions
- * for easy command-line access to openclaude
+ * for easy command-line access to claude
  */
 
 import { stat, chmod, symlink, unlink } from 'node:fs/promises'
@@ -48,7 +48,7 @@ async function isAdmin(): Promise<boolean> {
 async function setupUnixWrappers(): Promise<void> {
   console.log('Setting up Unix/Linux/macOS wrappers...')
   
-  const wrappers = ['openclaude', 'openclaude.sh']
+  const wrappers = ['claude', 'claude.sh']
   
   for (const wrapper of wrappers) {
     const wrapperPath = join(binDir, wrapper)
@@ -59,7 +59,7 @@ async function setupUnixWrappers(): Promise<void> {
       console.log(`✓ Made ${wrapper} executable`)
       
       // Create symlink in /usr/local/bin if we have permissions
-      const globalBinPath = '/usr/local/bin/openclaude'
+      const globalBinPath = '/usr/local/bin/claude'
       if (!existsSync(globalBinPath) && await isAdmin()) {
         try {
           await unlink(globalBinPath).catch(() => {}) // Remove if exists
@@ -74,8 +74,8 @@ async function setupUnixWrappers(): Promise<void> {
     }
   }
   
-  console.log('\nTo use openclaude command globally, run:')
-  console.log('  sudo ln -sf $(pwd)/bin/openclaude /usr/local/bin/openclaude')
+  console.log('\nTo use claude command globally, run:')
+  console.log('  sudo ln -sf $(pwd)/bin/claude /usr/local/bin/claude')
   console.log('\nOr add to your PATH:')
   console.log('  export PATH="$(pwd)/bin:$PATH"')
 }
@@ -86,7 +86,7 @@ async function setupUnixWrappers(): Promise<void> {
 async function setupWindowsWrappers(): Promise<void> {
   console.log('Setting up Windows wrappers...')
   
-  const wrappers = ['openclaude.bat', 'openclaude.ps1']
+  const wrappers = ['claude.bat', 'claude.ps1']
   
   for (const wrapper of wrappers) {
     const wrapperPath = join(binDir, wrapper)
@@ -100,19 +100,19 @@ async function setupWindowsWrappers(): Promise<void> {
     }
   }
   
-  console.log('\nTo use openclaude command:')
+  console.log('\nTo use claude command:')
   console.log('1. Add bin directory to PATH:')
   console.log(`   set PATH=%PATH%;${binDir}`)
   console.log('\n2. Or create a global symlink (requires admin):')
-  console.log(`   mklink openclaude.bat ${binDir}\\openclaude.bat`)
-  console.log(`   mklink openclaude.ps1 ${binDir}\\openclaude.ps1`)
+  console.log(`   mklink claude.bat ${binDir}\\claude.bat`)
+  console.log(`   mklink claude.ps1 ${binDir}\\claude.ps1`)
 }
 
 /**
  * Main setup function
  */
 async function main() {
-  console.log('🚀 OpenClaude Command Setup')
+  console.log('🚀 Claude Command Setup')
   console.log('='.repeat(40))
   
   if (isWindows()) {
@@ -123,12 +123,12 @@ async function main() {
   
   console.log('\n✓ Setup complete!')
   console.log('\nYou can now use:')
-  console.log('  openclaude        # from project directory')
-  console.log('  ./bin/openclaude  # explicit path')
+  console.log('  claude        # from project directory')
+  console.log('  ./bin/claude  # explicit path')
   console.log('\nOr build first:')
   console.log('  bun run build')
   console.log('\nThen test:')
-  console.log('  openclaude --version')
+  console.log('  claude --version')
 }
 
 main().catch(error => {
