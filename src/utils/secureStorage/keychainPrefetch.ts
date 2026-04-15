@@ -21,7 +21,7 @@
  * startupProfiler.ts at main.tsx:5, so no new module-init cost lands here.
  */
 
-import { execFile } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { isBareMode } from '../envUtils.js'
 import {
   CREDENTIALS_SERVICE_SUFFIX,
@@ -40,7 +40,31 @@ let legacyApiKeyPrefetch: { stdout: string | null } | null = null
 
 let prefetchPromise: Promise<void> | null = null
 
-type SpawnResult = { stdout: string | null; timedOut: boolean }
+type SpawnResult = { stdout: string | null; timedOut: boolean; locked: boolean }
+
+/**
+ * Check if the default keychain is locked.
+ * Returns true if the keychain is locked (exit code 36 from security show-keychain-info).
+ * This is a quick synchronous check to avoid hanging on password prompts.
+ */
+function isKeychainLocked(): boolean {
+  try {
+    // show-keychain-info returns exit code 36 if the keychain is locked
+    execFileSync('security', ['show-keychain-info'], {
+      encoding: 'utf-8',
+      timeout: 1000,
+    })
+    return false // No error = keychain is unlocked
+  } catch (err: unknown) {
+    // Exit code 36 = keychain is locked
+    if (err && typeof err === 'object' && 'status' in err) {
+      const status = (err as { status: number }).status
+      if (status === 36) return true
+    }
+    // Other errors - assume not locked, let the actual read attempt handle it
+    return false
+  }
+}
 
 function spawnSecurity(serviceName: string): Promise<SpawnResult> {
   return new Promise(resolve => {
@@ -52,10 +76,13 @@ function spawnSecurity(serviceName: string): Promise<SpawnResult> {
         // Exit 44 (entry not found) is a valid "no key" result and safe to
         // prime as null. But timeout (err.killed) means the keychain MAY have
         // a key we couldn't fetch — don't prime, let sync spawn retry.
+        // Exit 36 = keychain is locked
+        const isLocked = err && typeof err === 'object' && 'status' in err && (err as { status?: number }).status === 36
         // biome-ignore lint/nursery/noFloatingPromises: resolve() is not a floating promise
         resolve({
           stdout: err ? null : stdout?.trim() || null,
           timedOut: Boolean(err && 'killed' in err && err.killed),
+          locked: Boolean(isLocked),
         })
       },
     )
@@ -68,6 +95,12 @@ function spawnSecurity(serviceName: string): Promise<SpawnResult> {
  */
 export function startKeychainPrefetch(): void {
   if (process.platform !== 'darwin' || prefetchPromise || isBareMode()) return
+
+  // Skip prefetch if keychain is locked to avoid hanging on password prompt
+  if (isKeychainLocked()) {
+    console.error('[Keychain] Keychain is locked - skipping prefetch. Unlock your keychain in Keychain Access app.')
+    return
+  }
 
   // Fire both subprocesses immediately (non-blocking). They run in parallel
   // with each other AND with main.tsx imports. The await in Promise.all
