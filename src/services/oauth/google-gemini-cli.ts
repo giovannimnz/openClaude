@@ -1,15 +1,15 @@
 /**
- * Google Gemini CLI OAuth Implementation
+ * Google Gemini CLI Authentication Implementation
  * 
- * Implements OAuth 2.0 flow for Google Cloud Code Assist API
- * Compatible with GSD-2/Pi SDK implementation
+ * Implements authentication for Google Gemini CLI following the official flow
+ * Based on: https://google-gemini.github.io/gemini-cli/docs/get-started/authentication.html
  * 
  * Features:
- * - PKCE OAuth flow (standard)
- * - Enterprise flow via gcloud ADC
- * - Automatic token refresh with retry logic
- * - Secure credential storage
+ * - Official "Login with Google" flow
  * - Google Cloud Code Assist API support
+ * - Google AI Pro/Ultra subscription support
+ * - Project selection for enterprise environments
+ * - Retry logic for token refresh
  */
 
 import { randomBytes, createHash } from 'node:crypto'
@@ -21,19 +21,9 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-// Google Cloud OAuth endpoints
-const GOOGLE_OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
-const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'
-
-// Google Cloud Code Assist Client ID (for OAuth flow)
-const GEMINI_CLI_CLIENT_ID = '77185425430.apps.googleusercontent.com'
+// Official Gemini CLI OAuth endpoints
+const GEMINI_CLI_OAUTH_URL = 'https://geminicli.com/auth'
 const GEMINI_CLI_REDIRECT_URI = 'http://127.0.0.1:8085'
-
-// OAuth scopes for Google Cloud Code Assist
-const GEMINI_CLI_OAUTH_SCOPES = [
-  'https://www.googleapis.com/auth/cloud-platform',
-  'https://www.googleapis.com/auth/cloud-code-assist',
-]
 
 // Storage paths (compatible with Pi SDK)
 const PI_CONFIG_DIR = join(homedir(), '.pi')
@@ -43,41 +33,53 @@ const AUTH_JSON_PATH = join(PI_AGENT_DIR, 'auth.json')
 /**
  * Authentication mode types
  */
-export type AuthMode = 'oauth' | 'gcloud-adc'
+export type AuthMode = 'gemini-cli-google' | 'gemini-api-key' | 'vertex-ai' | 'gcloud-adc'
 
 /**
- * OAuth credential types
+ * Gemini CLI credential types
  */
-export type GoogleOAuthCredential = {
-  type: 'oauth'
+export type GeminiCliCredential = {
+  type: 'gemini-cli-google'
   credentials: {
     access_token: string
     refresh_token: string
-    expiry_date: number // Unix timestamp in milliseconds
+    expiry_date: number
     token_type: string
     scope: string
   }
   metadata?: {
     projectId?: string
-    environment?: 'standard' | 'enterprise'
+    accountType?: 'personal' | 'workspace'
+    subscription?: 'pro' | 'ultra' | 'code-assist'
   }
 }
 
 /**
- * Gcloud ADC credential types
+ * API key credential types
  */
-export type GcloudADCCredential = {
-  type: 'gcloud-adc'
+export type ApiKeyCredential = {
+  type: 'gemini-api-key'
+  credentials: {
+    apiKey: string
+  }
+}
+
+/**
+ * Vertex AI credential types
+ */
+export type VertexAICredential = {
+  type: 'vertex-ai'
   credentials: {
     projectId: string
-    tokenSource: 'gcloud-adc'
+    location: string
+    authMethod: 'adc' | 'service-account' | 'api-key'
   }
 }
 
 /**
  * Combined credential types
  */
-export type GoogleGeminiCredential = GoogleOAuthCredential | GcloudADCCredential
+export type GoogleGeminiCredential = GeminiCliCredential | ApiKeyCredential | VertexAICredential
 
 /**
  * Auth file structure
@@ -97,6 +99,7 @@ export type OAuthFlowResult =
       expiryDate: number
       authMode: AuthMode
       projectId?: string
+      accountType?: 'personal' | 'workspace'
     }
   | {
       success: false
@@ -108,8 +111,9 @@ export type OAuthFlowResult =
  */
 export type EnterpriseInfo = {
   projectId?: string
+  location?: string
   hasGcloud: boolean
-  hasADC: boolean
+  hasVertexAI: boolean
 }
 
 /**
@@ -117,27 +121,28 @@ export type EnterpriseInfo = {
  */
 export function detectEnterpriseEnvironment(): EnterpriseInfo {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.CLOUDSDK_CORE_PROJECT
+  const location = process.env.GOOGLE_CLOUD_LOCATION || process.env.CLOUDSDK_CORE_LOCATION
   
   // Check if gcloud is available
   let hasGcloud = false
   try {
-    // Simple check if gcloud command might exist
     const isWindows = process.platform === 'win32'
     const gcloudPath = isWindows 
       ? process.env.ProgramFiles + '\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd'
       : '/usr/local/bin/gcloud'
-    hasGcloud = true // We'll check this more carefully when needed
+    hasGcloud = true
   } catch {
     hasGcloud = false
   }
 
-  // Check for ADC
-  const hasADC = !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+  // Check for Vertex AI setup
+  const hasVertexAI = !!(projectId && location) && !!process.env.GOOGLE_APPLICATION_CREDENTIALS
   
   return {
     projectId: projectId || undefined,
+    location: location || undefined,
     hasGcloud,
-    hasADC,
+    hasVertexAI
   }
 }
 
@@ -156,105 +161,6 @@ export async function checkGcloudAvailability(): Promise<boolean> {
     return true
   } catch {
     return false
-  }
-}
-
-/**
- * Check if ADC is available
- */
-export async function checkADCAvailability(): Promise<boolean> {
-  try {
-    const isWindows = process.platform === 'win32'
-    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
-    
-    await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
-      windowsHide: true,
-      timeout: 10000
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Get current access token from ADC
- */
-export async function getADCAccessToken(): Promise<string | null> {
-  try {
-    const isWindows = process.platform === 'win32'
-    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
-    
-    const { stdout } = await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
-      windowsHide: true,
-      timeout: 10000
-    })
-    
-    return stdout.trim()
-  } catch {
-    return null
-  }
-}
-
-/**
- * Login via gcloud ADC (recommended for enterprise)
- */
-export async function loginGcloudADC(): Promise<OAuthFlowResult> {
-  try {
-    const enterpriseInfo = detectEnterpriseEnvironment()
-    
-    if (!enterpriseInfo.projectId) {
-      return {
-        success: false,
-        error: 'GOOGLE_CLOUD_PROJECT environment variable is required for gcloud ADC login'
-      }
-    }
-
-    const isWindows = process.platform === 'win32'
-    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
-    
-    // Run gcloud auth application-default login
-    await execFileAsync(command, ['auth', 'application-default', 'login'], {
-      windowsHide: false, // Allow user interaction
-      timeout: 120000 // 2 minutes timeout for user to complete login
-    })
-    
-    // Verify login worked
-    const token = await getADCAccessToken()
-    if (!token) {
-      return {
-        success: false,
-        error: 'gcloud ADC login failed or token not available'
-      }
-    }
-    
-    // Store ADC credentials
-    const auth = await loadAuthFile()
-    auth['google-gemini-cli'] = {
-      type: 'gcloud-adc',
-      credentials: {
-        projectId: enterpriseInfo.projectId,
-        tokenSource: 'gcloud-adc'
-      },
-      metadata: {
-        projectId: enterpriseInfo.projectId,
-        environment: 'enterprise'
-      }
-    }
-    await saveAuthFile(auth)
-    
-    return {
-      success: true,
-      accessToken: token,
-      expiryDate: Date.now() + 3600 * 1000, // 1 hour (tokens are refreshed automatically)
-      authMode: 'gcloud-adc',
-      projectId: enterpriseInfo.projectId
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: `gcloud ADC login failed: ${error instanceof Error ? error.message : String(error)}`
-    }
   }
 }
 
@@ -339,13 +245,14 @@ async function retryWithBackoff<T>(
  * Exchange authorization code for tokens
  */
 async function exchangeCodeForToken(code: string, codeVerifier: string) {
-  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+  // Use official Gemini CLI OAuth endpoint
+  const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      client_id: GEMINI_CLI_CLIENT_ID,
+      client_id: '77185425430.apps.googleusercontent.com',
       code,
       code_verifier: codeVerifier,
       grant_type: 'authorization_code',
@@ -366,13 +273,13 @@ async function exchangeCodeForToken(code: string, codeVerifier: string) {
  */
 async function refreshAccessToken(refreshToken: string): Promise<any> {
   return retryWithBackoff(async () => {
-    const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        client_id: GEMINI_CLI_CLIENT_ID,
+        client_id: '77185425430.apps.googleusercontent.com',
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }),
@@ -394,7 +301,7 @@ async function refreshAccessToken(refreshToken: string): Promise<any> {
     }
 
     return response.json()
-  }, 3, 1000) // 3 retries with 1s base delay
+  }, 3, 1000)
 }
 
 /**
@@ -409,21 +316,29 @@ export async function getGoogleCloudAccessToken(): Promise<string> {
       throw new Error('No authentication credentials found. Please run `claude /auth login`.')
     }
 
-    // Handle gcloud ADC
-    if (geminiCliAuth.type === 'gcloud-adc') {
-      const token = await retryWithBackoff(async () => {
-        const accessToken = await getADCAccessToken()
-        if (!accessToken) {
-          throw new Error('Failed to get access token from gcloud ADC.')
-        }
-        return accessToken
-      }, 2, 1000)
-      
-      return token
+    // Handle API key
+    if (geminiCliAuth.type === 'gemini-api-key') {
+      return geminiCliAuth.credentials.apiKey
     }
 
-    // Handle OAuth
-    if (geminiCliAuth.type !== 'oauth') {
+    // Handle Vertex AI (use gcloud ADC)
+    if (geminiCliAuth.type === 'vertex-ai') {
+      const isWindows = process.platform === 'win32'
+      const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+      
+      try {
+        const { stdout } = await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
+          windowsHide: true,
+          timeout: 10000
+        })
+        return stdout.trim()
+      } catch (error) {
+        throw new Error('Failed to get Vertex AI token. Please ensure gcloud is configured.')
+      }
+    }
+
+    // Handle Gemini CLI Google login
+    if (geminiCliAuth.type !== 'gemini-cli-google') {
       throw new Error('Invalid authentication type')
     }
 
@@ -439,7 +354,7 @@ export async function getGoogleCloudAccessToken(): Promise<string> {
       const newTokens = await refreshAccessToken(credentials.refresh_token)
       
       // Update credentials
-      const updatedCredentials: GoogleOAuthCredential['credentials'] = {
+      const updatedCredentials: GeminiCliCredential['credentials'] = {
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token || credentials.refresh_token,
         expiry_date: Date.now() + (newTokens.expires_in || 3600) * 1000,
@@ -449,7 +364,7 @@ export async function getGoogleCloudAccessToken(): Promise<string> {
 
       // Save updated credentials
       auth['google-gemini-cli'] = {
-        type: 'oauth',
+        type: 'gemini-cli-google',
         credentials: updatedCredentials,
         metadata: geminiCliAuth.metadata
       }
@@ -484,14 +399,28 @@ export async function isGeminiCliLoggedIn(): Promise<boolean> {
       return false
     }
 
-    // For gcloud ADC, check if token is available
-    if (geminiCliAuth.type === 'gcloud-adc') {
-      const token = await getADCAccessToken()
-      return token !== null
+    // For API key, always return true
+    if (geminiCliAuth.type === 'gemini-api-key') {
+      return true
     }
 
-    // For OAuth, check if token exists and is not expired
-    if (geminiCliAuth.type === 'oauth') {
+    // For Vertex AI, check if gcloud is configured
+    if (geminiCliAuth.type === 'vertex-ai') {
+      try {
+        const isWindows = process.platform === 'win32'
+        const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+        await execFileAsync(command, ['auth', 'application-default', 'print-access-token'], {
+          windowsHide: true,
+          timeout: 5000
+        })
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    // For Gemini CLI Google login, check if token exists and is not expired
+    if (geminiCliAuth.type === 'gemini-cli-google') {
       return !isTokenExpired(geminiCliAuth.credentials.expiry_date)
     }
 
@@ -515,26 +444,23 @@ export async function logoutGeminiCli(): Promise<void> {
 }
 
 /**
- * Login via OAuth flow (standard)
+ * Login via official Gemini CLI "Login with Google" flow
  */
-export async function loginGeminiCliOAuth(
+export async function loginGeminiCliGoogle(
   openUrl: (url: string) => Promise<void>,
   onCodeReceived?: (url: string) => void,
 ): Promise<OAuthFlowResult> {
   const { codeVerifier, codeChallenge } = generatePKCE()
   const state = generateState()
 
-  // Build authorization URL
-  const authUrl = new URL(GOOGLE_OAUTH_AUTH_URL)
-  authUrl.searchParams.set('client_id', GEMINI_CLI_CLIENT_ID)
+  // Build official Gemini CLI OAuth URL
+  const authUrl = new URL(GEMINI_CLI_OAUTH_URL)
   authUrl.searchParams.set('redirect_uri', GEMINI_CLI_REDIRECT_URI)
   authUrl.searchParams.set('response_type', 'code')
-  authUrl.searchParams.set('scope', GEMINI_CLI_OAUTH_SCOPES.join(' '))
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
   authUrl.searchParams.set('state', state)
   authUrl.searchParams.set('access_type', 'offline') // For refresh token
-  authUrl.searchParams.set('prompt', 'consent') // Ensure consent screen
 
   const authUrlString = authUrl.toString()
 
@@ -579,10 +505,13 @@ export async function loginGeminiCliOAuth(
           // Get enterprise info
           const enterpriseInfo = detectEnterpriseEnvironment()
           
+          // Determine account type based on project
+          const accountType = enterpriseInfo.projectId ? 'workspace' : 'personal'
+          
           // Store tokens in auth.json
           const auth = await loadAuthFile()
           auth['google-gemini-cli'] = {
-            type: 'oauth',
+            type: 'gemini-cli-google',
             credentials: {
               access_token: tokens.access_token,
               refresh_token: tokens.refresh_token,
@@ -590,11 +519,10 @@ export async function loginGeminiCliOAuth(
               token_type: tokens.token_type,
               scope: tokens.scope,
             },
-            metadata: enterpriseInfo.projectId ? {
+            metadata: {
               projectId: enterpriseInfo.projectId,
-              environment: 'enterprise'
-            } : {
-              environment: 'standard'
+              accountType,
+              subscription: enterpriseInfo.projectId ? 'code-assist' : 'pro'
             }
           }
           await saveAuthFile(auth)
@@ -608,6 +536,7 @@ export async function loginGeminiCliOAuth(
                 <h1>Authentication Successful!</h1>
                 <p>You can close this window and return to the terminal.</p>
                 ${enterpriseInfo.projectId ? `<p><strong>Project:</strong> ${enterpriseInfo.projectId}</p>` : ''}
+                <p><strong>Account Type:</strong> ${accountType}</p>
               </body>
             </html>
           `)
@@ -618,8 +547,9 @@ export async function loginGeminiCliOAuth(
             accessToken: tokens.access_token,
             refreshToken: tokens.refresh_token,
             expiryDate: Date.now() + (tokens.expires_in || 3600) * 1000,
-            authMode: 'oauth',
-            projectId: enterpriseInfo.projectId
+            authMode: 'gemini-cli-google',
+            projectId: enterpriseInfo.projectId,
+            accountType
           })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
@@ -644,6 +574,69 @@ export async function loginGeminiCliOAuth(
 }
 
 /**
+ * Login via Vertex AI (gcloud ADC)
+ */
+export async function loginVertexAI(): Promise<OAuthFlowResult> {
+  try {
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    
+    if (!enterpriseInfo.projectId || !enterpriseInfo.location) {
+      return {
+        success: false,
+        error: 'GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION environment variables are required for Vertex AI'
+      }
+    }
+
+    const hasGcloud = await checkGcloudAvailability()
+    if (!hasGcloud) {
+      return {
+        success: false,
+        error: 'gcloud CLI is not installed. Please install it first.'
+      }
+    }
+
+    const isWindows = process.platform === 'win32'
+    const command = isWindows ? 'gcloud.cmd' : 'gcloud'
+    
+    // Run gcloud auth application-default login
+    await execFileAsync(command, ['auth', 'application-default', 'login'], {
+      windowsHide: false, // Allow user interaction
+      timeout: 120000
+    })
+    
+    // Store Vertex AI credentials
+    const auth = await loadAuthFile()
+    auth['google-gemini-cli'] = {
+      type: 'vertex-ai',
+      credentials: {
+        projectId: enterpriseInfo.projectId,
+        location: enterpriseInfo.location,
+        authMethod: 'adc'
+      },
+      metadata: {
+        projectId: enterpriseInfo.projectId,
+        accountType: 'workspace',
+        subscription: 'code-assist'
+      }
+    }
+    await saveAuthFile(auth)
+    
+    return {
+      success: true,
+      accessToken: 'vertex-ai',
+      expiryDate: Date.now() + 3600 * 1000,
+      authMode: 'vertex-ai',
+      projectId: enterpriseInfo.projectId
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Vertex AI login failed: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+}
+
+/**
  * Main login function - auto-selects best auth method
  */
 export async function loginGeminiCli(
@@ -653,15 +646,23 @@ export async function loginGeminiCli(
 ): Promise<OAuthFlowResult> {
   const enterpriseInfo = detectEnterpriseEnvironment()
   const hasGcloud = await checkGcloudAvailability()
-  const hasADC = await checkADCAvailability()
 
-  // If gcloud ADC is available and requested or auto-selected
-  if ((forceMode === 'gcloud-adc' || (!forceMode && enterpriseInfo.projectId && hasADC)) && hasGcloud) {
-    return await loginGcloudADC()
+  // If Vertex AI is explicitly requested
+  if (forceMode === 'vertex-ai') {
+    return await loginVertexAI()
   }
 
-  // Otherwise use OAuth flow
-  return await loginGeminiCliOAuth(openUrl, onCodeReceived)
+  // If enterprise environment with project and gcloud, suggest Vertex AI
+  if (!forceMode && enterpriseInfo.projectId && enterpriseInfo.location && hasGcloud) {
+    // Return with info about both options available
+    return {
+      success: false,
+      error: 'Both "Login with Google" and "Vertex AI" are available. Set GOOGLE_CLOUD_PROJECT for corporate projects or use forceMode to select.'
+    }
+  }
+
+  // Default to "Login with Google"
+  return await loginGeminiCliGoogle(openUrl, onCodeReceived)
 }
 
 /**
@@ -694,7 +695,7 @@ export async function getCurrentProjectId(): Promise<string | null> {
       return null
     }
 
-    if (geminiCliAuth.type === 'gcloud-adc') {
+    if (geminiCliAuth.type === 'vertex-ai') {
       return geminiCliAuth.credentials.projectId
     }
 

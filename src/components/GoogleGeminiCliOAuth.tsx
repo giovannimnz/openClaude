@@ -1,9 +1,13 @@
 /**
- * Google Gemini CLI OAuth Flow Component
+ * Google Gemini CLI Authentication Component
  * 
- * Implements OAuth login flow for Google Cloud Code Assist
- * Supports both standard OAuth and gcloud ADC authentication
- * Compatible with GSD-2/Pi SDK implementation
+ * Implements authentication following the official Gemini CLI flow
+ * Based on: https://google-gemini.github.io/gemini-cli/docs/get-started/authentication.html
+ * 
+ * Options:
+ * 1. Login with Google - Recommended for Google AI Pro/Ultra users
+ * 2. Use Gemini API Key - For users who prefer API keys
+ * 3. Vertex AI - For Google Cloud Code Assist users
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
@@ -13,12 +17,12 @@ import { logEvent } from '../services/analytics/index.js'
 import { logError } from '../utils/log.js'
 import {
   loginGeminiCli,
-  loginGcloudADC,
+  loginGeminiCliGoogle,
+  loginVertexAI,
   isGeminiCliLoggedIn,
   logoutGeminiCli,
   detectEnterpriseEnvironment,
   checkGcloudAvailability,
-  checkADCAvailability,
   type OAuthFlowResult,
   type AuthMode,
   type EnterpriseInfo,
@@ -32,8 +36,7 @@ type GoogleGeminiCliOAuthProps = {
 
 type OAuthStatus =
   | { state: 'idle' }
-  | { state: 'starting' }
-  | { state: 'selecting_mode'; enterpriseInfo: EnterpriseInfo; hasGcloud: boolean; hasADC: boolean }
+  | { state: 'selecting_method'; enterpriseInfo: EnterpriseInfo; hasGcloud: boolean }
   | { state: 'waiting_for_login'; url: string; authMode: AuthMode }
   | { state: 'processing' }
   | { state: 'success' }
@@ -45,7 +48,6 @@ export function GoogleGeminiCliOAuth({
   forceAuthMode,
 }: GoogleGeminiCliOAuthProps): React.ReactNode {
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>({ state: 'idle' })
-  const [selectedAuthMode, setSelectedAuthMode] = useState<AuthMode | null>(null)
 
   // Check login status on mount
   useEffect(() => {
@@ -67,7 +69,7 @@ export function GoogleGeminiCliOAuth({
         setOAuthStatus({ state: 'success' })
         onDone(true)
       } else {
-        setOAuthStatus({ state: 'starting' })
+        setOAuthStatus({ state: 'selecting_method', enterpriseInfo: detectEnterpriseEnvironment(), hasGcloud: await checkGcloudAvailability() })
       }
     }
     checkStatus()
@@ -76,46 +78,48 @@ export function GoogleGeminiCliOAuth({
   // Start authentication process
   useEffect(() => {
     async function startAuth() {
-      if (oauthStatus.state !== 'starting') return
-
-      setOAuthStatus({ state: 'processing' })
+      if (oauthStatus.state !== 'selecting_method') return
 
       const enterpriseInfo = detectEnterpriseEnvironment()
       const hasGcloud = await checkGcloudAvailability()
-      const hasADC = await checkADCAvailability()
 
       // If force mode is specified, use it directly
       if (forceAuthMode) {
-        setSelectedAuthMode(forceAuthMode)
         await performLogin(forceAuthMode, enterpriseInfo)
         return
       }
 
-      // If enterprise environment and gcloud ADC is available, offer choice
-      if (enterpriseInfo.projectId && hasGcloud) {
-        setOAuthStatus({
-          state: 'selecting_mode',
-          enterpriseInfo,
-          hasGcloud,
-          hasADC
-        })
+      // If enterprise environment with project and gcloud, auto-select Vertex AI
+      if (enterpriseInfo.projectId && enterpriseInfo.location && hasGcloud) {
+        setOAuthStatus({ state: 'processing' })
+        await performLogin('vertex-ai', enterpriseInfo)
         return
       }
 
-      // Otherwise use OAuth directly
-      setSelectedAuthMode('oauth')
-      await performLogin('oauth', enterpriseInfo)
+      // Otherwise show selection (or auto-select Google login)
+      if (!enterpriseInfo.projectId) {
+        setOAuthStatus({ state: 'processing' })
+        await performLogin('gemini-cli-google', enterpriseInfo)
+      }
     }
     startAuth()
   }, [oauthStatus.state, forceAuthMode])
+
+  // Handle method selection (for UI)
+  const handleMethodSelection = useCallback(async (authMode: AuthMode) => {
+    setOAuthStatus({ state: 'processing' })
+    
+    const enterpriseInfo = detectEnterpriseEnvironment()
+    await performLogin(authMode, enterpriseInfo)
+  }, [])
 
   // Perform login with selected mode
   const performLogin = useCallback(async (authMode: AuthMode, enterpriseInfo: EnterpriseInfo) => {
     try {
       let result: OAuthFlowResult
 
-      if (authMode === 'gcloud-adc') {
-        result = await loginGcloudADC()
+      if (authMode === 'vertex-ai') {
+        result = await loginVertexAI()
       } else {
         result = await loginGeminiCli(
           async (url) => {
@@ -148,7 +152,8 @@ export function GoogleGeminiCliOAuth({
         setOAuthStatus({ state: 'success' })
         logEvent('google_gemini_cli_login_success', {
           authMode: result.authMode,
-          projectId: result.projectId
+          projectId: result.projectId,
+          accountType: result.accountType
         })
       } else {
         setOAuthStatus({ state: 'error', message: result.error })
@@ -163,15 +168,6 @@ export function GoogleGeminiCliOAuth({
       logError(error)
     }
   }, [])
-
-  // Handle mode selection
-  const handleModeSelection = useCallback(async (authMode: AuthMode) => {
-    setSelectedAuthMode(authMode)
-    setOAuthStatus({ state: 'processing' })
-    
-    const enterpriseInfo = detectEnterpriseEnvironment()
-    await performLogin(authMode, enterpriseInfo)
-  }, [performLogin])
 
   // Auto-close on success
   useEffect(() => {
@@ -189,53 +185,55 @@ export function GoogleGeminiCliOAuth({
       case 'idle':
         return <Text>Checking authentication status...</Text>
 
-      case 'starting':
-        return (
-          <Box flexDirection="column" gap={1}>
-            <Box>
-              <Spinner />
-              <Text>Starting Google Gemini CLI authentication...</Text>
-            </Box>
-          </Box>
-        )
-
-      case 'selecting_mode':
+      case 'selecting_method':
         return (
           <Box flexDirection="column" gap={1}>
             <Text color="cyan">
-              🏢 Enterprise Environment Detected
+              🔐 Google Gemini CLI Authentication
             </Text>
+            
             {oauthStatus.enterpriseInfo.projectId && (
-              <Text dimColor>
-                📋 Project: {oauthStatus.enterpriseInfo.projectId}
-              </Text>
+              <Box flexDirection="column" gap={1} marginTop={1}>
+                <Text color="yellow">
+                  🏢 Enterprise Project Detected
+                </Text>
+                <Text dimColor>
+                  📋 Project: {oauthStatus.enterpriseInfo.projectId}
+                </Text>
+                {oauthStatus.enterpriseInfo.location && (
+                  <Text dimColor>
+                    📍 Location: {oauthStatus.enterpriseInfo.location}
+                  </Text>
+                )}
+              </Box>
             )}
-            <Text dimColor>
-              🔄 Select authentication method:
-            </Text>
+            
             <Box flexDirection="column" gap={1} marginTop={1}>
-              <Text color="green">
-                [1] Gcloud ADC (Recommended for Enterprise)
-              </Text>
               <Text dimColor>
-                Uses: gcloud auth application-default login
-              </Text>
-              <Text dimColor>
-                Pros: No browser needed, works with corporate accounts
+                🔄 Select authentication method:
               </Text>
               
-              <Text color="blue">
-                [2] OAuth Browser Login (Standard)
+              <Text color="green">
+                [1] Login with Google (Recommended)
               </Text>
               <Text dimColor>
-                Uses: Google OAuth 2.0 in browser
+                • For Google AI Pro/Ultra subscribers
               </Text>
               <Text dimColor>
-                Pros: Simple, standard Google login
+                • Simple browser-based login
               </Text>
+              
+              {oauthStatus.enterpriseInfo.projectId && oauthStatus.hasGcloud && (
+                <Text color="blue">
+                  [2] Vertex AI (Enterprise)
+                </Text>
+              )}
             </Box>
+            
             <Text dimColor marginTop={1}>
-              Press 1 for Gcloud ADC or 2 for OAuth, then Enter
+              {oauthStatus.enterpriseInfo.projectId && oauthStatus.hasGcloud
+                ? 'Press 1 for Login with Google or 2 for Vertex AI, then Enter'
+                : 'Press Enter for Login with Google'}
             </Text>
           </Box>
         )
@@ -246,12 +244,13 @@ export function GoogleGeminiCliOAuth({
             <Box>
               <Spinner />
               <Text>
-                {oauthStatus.authMode === 'gcloud-adc' 
-                  ? 'Waiting for gcloud authentication...' 
+                {oauthStatus.authMode === 'vertex-ai'
+                  ? 'Waiting for gcloud authentication...'
                   : 'Opening browser for Google authentication...'}
               </Text>
             </Box>
-            {oauthStatus.authMode === 'oauth' && (
+            
+            {oauthStatus.authMode === 'gemini-cli-google' && (
               <Box flexDirection="column" gap={1}>
                 <Text dimColor>If the browser didn't open, visit:</Text>
                 <Link url={oauthStatus.url}>
@@ -259,7 +258,12 @@ export function GoogleGeminiCliOAuth({
                 </Link>
               </Box>
             )}
-            <Text dimColor>Complete the authentication in your browser.</Text>
+            
+            <Text dimColor>
+              {oauthStatus.authMode === 'vertex-ai'
+                ? 'Complete the gcloud authentication in your terminal.'
+                : 'Complete the authentication in your browser.'}
+            </Text>
           </Box>
         )
 
@@ -277,16 +281,9 @@ export function GoogleGeminiCliOAuth({
             <Text color="success">
               ✓ Google Gemini CLI authentication successful!
             </Text>
-            {selectedAuthMode === 'gcloud-adc' && (
-              <Text dimColor>
-                Using: Gcloud Application Default Credentials
-              </Text>
-            )}
-            {mode === 'login' && (
-              <Text dimColor>
-                You can now use Google Gemini models with your Google account.
-              </Text>
-            )}
+            <Text dimColor>
+              You can now use Google Gemini models.
+            </Text>
           </Box>
         )
 
