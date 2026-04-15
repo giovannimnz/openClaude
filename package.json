@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "install:setup": "bun run scripts/setup/install.ts",
+    "setup:wrappers": "bun run scripts/setup/setup-wrappers.ts",
     "update": "bun run scripts/setup/update.ts",
     "build": "bun run scripts/build.ts",
     "dev": "bun run build && node dist/cli.mjs",
