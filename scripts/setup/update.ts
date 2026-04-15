@@ -12,7 +12,7 @@
  */
 
 import { join } from 'node:path'
-import { existsSync } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { platform } from 'node:os'
 import { spawn } from 'node:child_process'
 
