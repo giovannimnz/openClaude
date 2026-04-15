@@ -108,28 +108,9 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     return false;
   }
 
-  const {
-    isProviderConfigured
-  } = await import('./utils/model/providers.js');
   const usesAnthropicSetup = usesAnthropicAccountFlow();
   const config = getGlobalConfig();
   let onboardingShown = false;
-
-  // Show provider setup if no provider is configured
-  if (!isProviderConfigured()) {
-    const {
-      ProviderManager
-    } = await import('./components/ProviderManager.js');
-    await showSetupDialog(root, done => <ProviderManager 
-      mode="first-run" 
-      onDone={() => {
-        void done();
-      }}
-    />, {
-      onChangeAppState
-    });
-    return true;
-  }
 
   // Skip onboarding dialog for third-party providers (no Anthropic account needed)
   if (usesAnthropicSetup && (!config.theme || !config.hasCompletedOnboarding) // always show onboarding at least once

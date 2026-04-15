@@ -34,7 +34,7 @@ export function getAPIProvider(): APIProvider | undefined {
               ? 'vertex'
               : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
                 ? 'foundry'
-                : undefined // No provider configured - will show setup flow
+                : 'google-gemini-cli' // Default to Google Gemini CLI
 }
 
 /**
