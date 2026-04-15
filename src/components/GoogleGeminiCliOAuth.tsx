@@ -15,6 +15,9 @@ import {
   loginGeminiCli,
   isGeminiCliLoggedIn,
   logoutGeminiCli,
+  getGoogleCloudProjectId,
+  isEnterpriseEnvironment,
+  getEnterpriseMetadata,
   type OAuthFlowResult,
 } from '../services/oauth/google-gemini-cli.js'
 
@@ -37,10 +40,21 @@ export function GoogleGeminiCliOAuth({
 }: GoogleGeminiCliOAuthProps): React.ReactNode {
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>({ state: 'idle' })
   const [pastedCode, setPastedCode] = useState('')
+  const [enterpriseInfo, setEnterpriseInfo] = useState<{projectId?: string; environment?: string} | null>(null)
 
-  // Check login status on mount
+  // Check login status and enterprise environment on mount
   useEffect(() => {
     async function checkStatus() {
+      // Check for enterprise environment
+      if (isEnterpriseEnvironment()) {
+        const projectId = getGoogleCloudProjectId()
+        const metadata = await getEnterpriseMetadata()
+        setEnterpriseInfo({
+          projectId: projectId || metadata?.projectId,
+          environment: metadata?.environment || 'enterprise',
+        })
+      }
+
       if (mode === 'logout') {
         try {
           await logoutGeminiCli()
@@ -138,9 +152,26 @@ export function GoogleGeminiCliOAuth({
 
       case 'starting':
         return (
-          <Box>
-            <Spinner />
-            <Text>Starting Google Gemini CLI authentication...</Text>
+          <Box flexDirection="column" gap={1}>
+            <Box>
+              <Spinner />
+              <Text>Starting Google Gemini CLI authentication...</Text>
+            </Box>
+            {enterpriseInfo && (
+              <Box flexDirection="column" gap={1}>
+                <Text color="cyan">
+                  🏢 Enterprise Environment Detected
+                </Text>
+                {enterpriseInfo.projectId && (
+                  <Text dimColor>
+                    📋 Project: {enterpriseInfo.projectId}
+                  </Text>
+                )}
+                <Text dimColor>
+                  🔐 Using enterprise OAuth scopes
+                </Text>
+              </Box>
+            )}
           </Box>
         )
 
@@ -175,6 +206,18 @@ export function GoogleGeminiCliOAuth({
             <Text color="success">
               ✓ Google Gemini CLI authentication successful!
             </Text>
+            {enterpriseInfo && (
+              <Box flexDirection="column" gap={1}>
+                <Text color="cyan">
+                  🏢 Enterprise Environment
+                </Text>
+                {enterpriseInfo.projectId && (
+                  <Text dimColor>
+                    📋 Project: {enterpriseInfo.projectId}
+                  </Text>
+                )}
+              </Box>
+            )}
             {mode === 'login' && (
               <Text dimColor>
                 You can now use Google Gemini models with your Google account.

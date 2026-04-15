@@ -30,6 +30,65 @@ const GEMINI_CLI_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/cloud-code-assist',
 ]
 
+// OAuth scopes for Google Cloud Enterprise projects
+const GEMINI_CLI_ENTERPRISE_OAUTH_SCOPES = [
+  'https://www.googleapis.com/auth/cloud-platform',
+  'https://www.googleapis.com/auth/cloud-code-assist',
+  'https://www.googleapis.com/auth/cloud-identity',
+  'https://www.googleapis.com/auth/iam',
+]
+
+/**
+ * Get Google Cloud Project ID from environment or credentials
+ */
+export function getGoogleCloudProjectId(): string | undefined {
+  return (
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_PROJECT_ID ||
+    undefined
+  )
+}
+
+/**
+ * Check if running in enterprise/corporate environment
+ */
+export function isEnterpriseEnvironment(): boolean {
+  const projectId = getGoogleCloudProjectId()
+  return projectId !== undefined && projectId !== ''
+}
+
+/**
+ * Get enterprise metadata from stored credentials
+ */
+export async function getEnterpriseMetadata(): Promise<{projectId?: string; environment?: string} | null> {
+  try {
+    const auth = await loadAuthFile()
+    const geminiCliAuth = auth['google-gemini-cli'] as GoogleOAuthCredential | undefined
+    
+    if (!geminiCliAuth || !geminiCliAuth.metadata) {
+      return null
+    }
+    
+    return {
+      projectId: geminiCliAuth.metadata.projectId,
+      environment: geminiCliAuth.metadata.environment,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get appropriate OAuth scopes based on environment
+ */
+function getOAuthScopes(): string[] {
+  if (isEnterpriseEnvironment()) {
+    return GEMINI_CLI_ENTERPRISE_OAUTH_SCOPES
+  }
+  return GEMINI_CLI_OAUTH_SCOPES
+}
+
 // Storage paths (compatible with Pi SDK)
 const PI_CONFIG_DIR = join(homedir(), '.pi')
 const PI_AGENT_DIR = join(PI_CONFIG_DIR, 'agent')
@@ -46,6 +105,11 @@ export type GoogleOAuthCredential = {
     expiry_date: number // Unix timestamp in milliseconds
     token_type: string
     scope: string
+  }
+  metadata?: {
+    projectId?: string
+    environment?: 'standard' | 'enterprise'
+    organizationId?: string
   }
 }
 
@@ -285,16 +349,31 @@ export async function loginGeminiCli(
 ): Promise<OAuthFlowResult> {
   const { codeVerifier, codeChallenge } = generatePKCE()
   const state = generateState()
+  const projectId = getGoogleCloudProjectId()
+  const isEnterprise = isEnterpriseEnvironment()
 
   // Build authorization URL
   const authUrl = new URL(GOOGLE_OAUTH_AUTH_URL)
   authUrl.searchParams.set('client_id', GEMINI_CLI_CLIENT_ID)
   authUrl.searchParams.set('redirect_uri', GEMINI_CLI_REDIRECT_URI)
   authUrl.searchParams.set('response_type', 'code')
-  authUrl.searchParams.set('scope', GEMINI_CLI_OAUTH_SCOPES.join(' '))
+  authUrl.searchParams.set('scope', getOAuthScopes().join(' '))
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
   authUrl.searchParams.set('state', state)
+
+  // Add enterprise-specific parameters
+  if (isEnterprise && projectId) {
+    // Add access_type for offline access (required for refresh tokens)
+    authUrl.searchParams.set('access_type', 'offline')
+    
+    // Add prompt for consent (required for enterprise apps)
+    authUrl.searchParams.set('prompt', 'consent')
+    
+    console.log(`🏢 Enterprise environment detected`)
+    console.log(`📋 Project: ${projectId}`)
+    console.log(`🔐 Using enterprise OAuth scopes`)
+  }
 
   const authUrlString = authUrl.toString()
 
@@ -336,7 +415,8 @@ export async function loginGeminiCli(
           
           // Store tokens in auth.json
           const auth = await loadAuthFile()
-          auth['google-gemini-cli'] = {
+          
+          const credentialData: GoogleOAuthCredential = {
             type: 'oauth',
             credentials: {
               access_token: tokens.access_token,
@@ -346,6 +426,16 @@ export async function loginGeminiCli(
               scope: tokens.scope,
             },
           }
+          
+          // Add enterprise metadata if applicable
+          if (isEnterprise && projectId) {
+            credentialData.metadata = {
+              projectId,
+              environment: 'enterprise',
+            }
+          }
+          
+          auth['google-gemini-cli'] = credentialData
           await saveAuthFile(auth)
 
           // Send success response
