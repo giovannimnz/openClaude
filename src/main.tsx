@@ -584,6 +584,7 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE') ? {
   extraCliArgs: []
 } : undefined;
 export async function main() {
+  console.log('[DEBUG] main() function started');
   profileCheckpoint('main_function_start');
 
   // SECURITY: Prevent Windows from executing commands from current directory
@@ -3779,6 +3780,7 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       const initialMessages = deepLinkBanner ? [deepLinkBanner, ...hookMessages] : hookMessages.length > 0 ? hookMessages : undefined;
+      console.log('[DEBUG] About to call launchRepl with root and sessionConfig');
       await launchRepl(root, {
         getFpsMetrics,
         stats,
@@ -3788,6 +3790,7 @@ async function run(): Promise<CommanderCommand> {
         initialMessages,
         pendingHookMessages
       }, renderAndRun);
+      console.log('[DEBUG] launchRepl call completed');
     }
   }).version(`${MACRO.DISPLAY_VERSION ?? MACRO.VERSION} (Open Claude)`, '-v, --version', 'Output the version number');
 
