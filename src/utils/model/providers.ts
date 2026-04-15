@@ -13,7 +13,7 @@ export type APIProvider =
   | 'codex'
   | 'mistral'
 
-export function getAPIProvider(): APIProvider {
+export function getAPIProvider(): APIProvider | undefined {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
     ? 'gemini'
     :
@@ -31,7 +31,14 @@ export function getAPIProvider(): APIProvider {
             ? 'vertex'
             : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
               ? 'foundry'
-              : 'firstParty'
+              : undefined // No provider configured - will show setup flow
+}
+
+/**
+ * Check if any provider is configured
+ */
+export function isProviderConfigured(): boolean {
+  return getAPIProvider() !== undefined
 }
 
 export function usesAnthropicAccountFlow(): boolean {
