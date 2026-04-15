@@ -12,7 +12,8 @@
  */
 
 import { join, homedir } from 'node:path'
-import { mkdir, writeFile, chmod, existsSync } from 'node:fs/promises'
+import { mkdir, writeFile, chmod } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { platform } from 'node:os'
 import { spawn } from 'node:child_process'
 
