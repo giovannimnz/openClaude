@@ -20,3 +20,6 @@ export {
 // OAuth utilities
 export { AuthCodeListener } from './auth-code-listener.js'
 export { getOauthProfile } from './getOauthProfile.js'
+
+// OAuth Service
+export { OAuthService } from './oauth-service.js'
