@@ -607,6 +607,7 @@ export async function main() {
     process.exit(0);
   });
   profileCheckpoint('main_warning_handler_initialized');
+  console.log('[DEBUG] Warning handler initialized');
 
   // Check for cc:// or cc+unix:// URL in argv — rewrite so the main command
   // handles it, giving the full interactive TUI instead of a stripped-down subcommand.
@@ -803,6 +804,8 @@ export async function main() {
   const hasInitOnlyFlag = cliArgs.includes('--init-only');
   const hasSdkUrl = cliArgs.some(arg => arg.startsWith('--sdk-url'));
   const isNonInteractive = hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || !process.stdout.isTTY;
+  console.log(`[DEBUG] process.stdout.isTTY: ${process.stdout.isTTY}`);
+  console.log(`[DEBUG] isNonInteractive: ${isNonInteractive} (hasPrintFlag: ${hasPrintFlag}, hasInitOnlyFlag: ${hasInitOnlyFlag}, hasSdkUrl: ${hasSdkUrl})`);
 
   // Stop capturing early input for non-interactive modes
   if (isNonInteractive) {
@@ -907,8 +910,11 @@ async function run(): Promise<CommanderCommand> {
   // Use preAction hook to run initialization only when executing a command,
   // not when displaying help. This avoids the need for env variable signaling.
   program.hook('preAction', async thisCommand => {
+    console.log('[DEBUG] preAction hook called');
     await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
+    console.log('[DEBUG] MDM and keychain prefetch completed');
     await init();
+    console.log('[DEBUG] init() completed in preAction');
     profileCheckpoint('preAction_after_init');
 
     // process.title on Windows sets the console title directly; on POSIX,
@@ -2221,7 +2227,9 @@ async function run(): Promise<CommanderCommand> {
       const {
         createRoot
       } = await import('./ink.js');
+      console.log('[DEBUG] About to create root with ink.js');
       root = await createRoot(ctx.renderOptions);
+      console.log('[DEBUG] Root created successfully');
 
       // Log startup time now, before any blocking dialog renders. Logging
       // from REPL's first render (the old location) included however long
@@ -2231,8 +2239,10 @@ async function run(): Promise<CommanderCommand> {
         event: 'startup' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         durationMs: Math.round(process.uptime() * 1000)
       });
+      console.log('[DEBUG] About to call showSetupScreens');
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
+      console.log('[DEBUG] showSetupScreens completed');
 
       // Now that trust is established and GrowthBook has auth headers,
       // resolve the --remote-control / --rc entitlement gate.
@@ -4489,7 +4499,9 @@ Examples:
     });
   }
   profileCheckpoint('run_before_parse');
+  console.log('[DEBUG] About to call program.parseAsync');
   await program.parseAsync(process.argv);
+  console.log('[DEBUG] program.parseAsync completed');
   profileCheckpoint('run_after_parse');
 
   // Record final checkpoint for total_time calculation
