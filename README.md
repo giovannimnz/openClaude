@@ -27,13 +27,34 @@ OpenClaude is available at:
 
 ### Install
 
+**Option 1: Self-Contained (Recommended)**
+
+```bash
+git clone https://github.com/giovannimnz/openClaude.git
+cd openClaude
+bun run install:setup
+```
+
+**Option 2: Global npm Package**
+
 ```bash
 npm install -g @giovannimnz/openclaude
 ```
 
-If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenClaude.
+See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
 
 ### Start
+
+**Self-Contained:**
+
+```bash
+node dist/cli.mjs
+# or use convenience scripts
+./bin/openclaude        # Unix/Linux/Mac
+bin\openclaude.bat      # Windows
+```
+
+**Global Package:**
 
 ```bash
 openclaude
