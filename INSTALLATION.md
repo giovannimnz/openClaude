@@ -6,7 +6,8 @@ This guide explains how to install and maintain openClaude with a clean, self-co
 
 ### Method 1: Quick Install (Recommended)
 
-The easiest way to get started with openClaude.
+The easiest way to get started with openClaude. The install script automatically detects
+and installs missing dependencies (Node.js >= 20, npm, Bun) before setting up the project.
 
 ```bash
 # Clone the repository
@@ -14,7 +15,7 @@ git clone https://github.com/giovannimnz/openClaude.git
 cd openClaude
 
 # Run the installation script
-bun run install:setup
+./install.sh
 
 # Start using openClaude
 node dist/cli.mjs
@@ -106,7 +107,8 @@ bin\openclaude.bat
 
 ```bash
 # Installation
-bun run install:setup    # First-time installation
+bun run install:setup    # First-time installation (or ./install.sh directly)
+./install.sh             # Auto-detects and installs node/npm/bun if needed
 
 # Updates
 bun run update           # Update to latest version
@@ -223,7 +225,7 @@ bun --version
 
 # Clean and retry
 rm -rf node_modules dist
-bun run install:setup
+./install.sh
 ```
 
 **Problem:** Build fails
@@ -290,7 +292,7 @@ node dist/cli.mjs /provider
 # Install to custom directory
 git clone https://github.com/giovannimnz/openClaude.git /path/to/installation
 cd /path/to/installation
-bun run install:setup
+./install.sh
 
 # Create alias for easy access
 alias openclaude='/path/to/installation/node dist/cli.mjs'
@@ -304,8 +306,8 @@ git clone https://github.com/giovannimnz/openClaude.git openclaude-v1
 git clone https://github.com/giovannimnz/openClaude.git openclaude-dev
 
 # Switch between versions
-cd openclaude-v1 && bun run install:setup
-cd ../openclaude-dev && bun run install:setup
+cd openclaude-v1 && ./install.sh
+cd ../openclaude-dev && ./install.sh
 ```
 
 ### Development Setup
@@ -316,7 +318,7 @@ git clone https://github.com/giovannimnz/openClaude.git
 cd openClaude
 
 # Install and setup
-bun run install:setup
+./install.sh
 
 # Development mode with hot reload
 bun run dev
@@ -358,7 +360,8 @@ bun run dev:openai
 
 | Command | Purpose |
 |---------|---------|
-| `bun run install:setup` | First-time installation |
+| `./install.sh` | First-time installation (auto-installs deps) |
+| `bun run install:setup` | Same as above (calls install.sh) |
 | `bun run update` | Update to latest version |
 | `node dist/cli.mjs` | Run openClaude |
 | `node dist/cli.mjs /provider` | Configure provider |

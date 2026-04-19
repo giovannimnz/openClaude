@@ -8,7 +8,7 @@
  * - Sets up user configuration directory
  * - Creates convenience scripts
  * 
- * Usage: bun run install:setup
+ * Usage: ./install.sh
  */
 
 import { join } from 'node:path'
@@ -168,7 +168,7 @@ bin\\openclaude.bat
 ## Available Commands
 
 ### Installation & Updates
-- \`bun run install:setup\` - Reinstall (rarely needed)
+- \`./install.sh\` - Reinstall (rarely needed)
 - \`bun run update\` - Update to latest version
 - \`bun run build\` - Rebuild the project
 

@@ -32,7 +32,7 @@ OpenClaude is available at:
 ```bash
 git clone https://github.com/giovannimnz/openClaude.git
 cd openClaude
-bun run install:setup
+./install.sh
 ```
 
 **Option 2: Global npm Package**
