@@ -290,7 +290,7 @@ export function getProviderPresetDefaults(
     case 'atius':
       return {
         provider: 'openai',
-        name: 'Atius',
+        name: 'Atius Native',
         baseUrl: 'https://router.atius.com.br/v1',
         model: 'MiniMax-M2.7',
         apiKey: process.env.ATIUS_ROUTER_API_KEY ?? '',

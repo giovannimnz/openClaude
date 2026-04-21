@@ -199,7 +199,7 @@ export function getLocalOpenAICompatibleProviderLabel(baseUrl?: string): string 
     }
     // Check for Atius router
     if (host.includes('router.atius.com.br') || haystack.includes('atius')) {
-      return 'Atius'
+      return 'Atius Native'
     }
   } catch {
     // Fall back to the generic label when the base URL is malformed.

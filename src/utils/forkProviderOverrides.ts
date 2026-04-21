@@ -79,7 +79,7 @@ export function getForkProviderDisplay(): string | null {
     return 'Google Gemini API'
   }
   if (process.env.OPENAI_BASE_URL?.includes('router.atius.com.br')) {
-    return 'Atius'
+    return 'Atius Native'
   }
   if (process.env.OPENAI_BASE_URL?.includes('localhost:11434')) {
     return 'Ollama'

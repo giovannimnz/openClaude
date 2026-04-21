@@ -154,8 +154,9 @@ function presetToDraft(preset: ProviderPreset): ProviderDraft {
 function profileSummary(profile: ProviderProfile, isActive: boolean): string {
   const activeSuffix = isActive ? ' (active)' : ''
   const keyInfo = profile.apiKey ? 'key set' : 'no key'
+  const isAtius = /atius/i.test(profile.baseUrl) || /atius/i.test(profile.name)
   const providerKind =
-    profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'
+    isAtius ? 'atius native' : profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'
   const models = parseModelList(profile.model)
   const modelDisplay =
     models.length <= 3
@@ -1339,14 +1340,17 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     options?: { includeGithub?: boolean },
   ): React.ReactNode {
     const includeGithub = options?.includeGithub ?? false
-    const selectOptions = profiles.map(profile => ({
-      value: profile.id,
-      label:
-        profile.id === activeProfileId
-          ? `${profile.name} (active)`
-          : profile.name,
-      description: `${profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'} · ${profile.baseUrl} · ${profile.model}`,
-    }))
+    const selectOptions = profiles.map(profile => {
+      const pIsAtius = /atius/i.test(profile.baseUrl) || /atius/i.test(profile.name)
+      return {
+        value: profile.id,
+        label:
+          profile.id === activeProfileId
+            ? `${profile.name} (active)`
+            : profile.name,
+        description: `${pIsAtius ? 'atius native' : profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'} · ${profile.baseUrl} · ${profile.model}`,
+      }
+    })
 
     if (includeGithub && githubProviderAvailable) {
       selectOptions.push({

@@ -125,7 +125,7 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
     if (/nvidia/i.test(baseUrl) || /nvidia/i.test(rawModel) || process.env.NVIDIA_NIM)
       name = 'NVIDIA NIM'
     else if (/router\.atius\.com\.br/i.test(baseUrl) || /atius/i.test(baseUrl))
-      name = 'Atius'
+      name = 'Atius Native'
     else if (/minimax/i.test(baseUrl) || /minimax/i.test(rawModel) || process.env.MINIMAX_API_KEY)
       name = 'MiniMax'
     else if (resolvedRequest.transport === 'codex_responses' || baseUrl.includes('chatgpt.com/backend-api/codex'))
@@ -210,7 +210,13 @@ export function printStartupScreen(): void {
   out.push(boxRow(r, W, l))
   ;[r, l] = lbl('Model', p.model)
   out.push(boxRow(r, W, l))
-  const ep = p.baseUrl.length > 38 ? p.baseUrl.slice(0, 35) + '...' : p.baseUrl
+  // Atius uses branded display instead of raw URL
+  const isAtiusProvider = /router\.atius\.com\.br/i.test(p.baseUrl) || /atius/i.test(p.name)
+  const ep = isAtiusProvider
+    ? 'Atius API'
+    : p.baseUrl.length > 38
+      ? p.baseUrl.slice(0, 35) + '...'
+      : p.baseUrl
   ;[r, l] = lbl('Endpoint', ep)
   out.push(boxRow(r, W, l))
 
