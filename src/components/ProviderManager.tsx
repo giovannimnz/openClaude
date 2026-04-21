@@ -993,9 +993,9 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     const canUseCodexOAuth = !isBareMode()
     const options = [
       {
-        value: 'anthropic',
-        label: 'Anthropic',
-        description: 'Native Claude API (x-api-key auth)',
+        value: 'atius',
+        label: 'Atius',
+        description: 'Native Atius API (x-api-key auth)',
       },
       {
         value: 'ollama',
@@ -1141,8 +1141,8 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
         <Text dimColor>{currentStep.helpText}</Text>
         <Text dimColor>
           Provider type:{' '}
-          {draftProvider === 'anthropic'
-            ? 'Anthropic native API'
+          {draftProvider === 'atius'
+            ? 'Atius native API'
             : 'OpenAI-compatible API'}
         </Text>
         <Text dimColor>
