@@ -301,16 +301,15 @@ export function buildCurrentProviderSummary(options?: {
     }
   }
 
+  // Default: Ollama (our fork's default provider)
   return {
-    providerLabel: 'Anthropic',
+    providerLabel: 'Ollama',
     modelLabel: getSafeDisplayValue(
-      processEnv.ANTHROPIC_MODEL ??
-        processEnv.CLAUDE_MODEL ??
-        'claude-sonnet-4-6',
+      processEnv.OPENAI_MODEL ?? 'llama3.1:8b',
       secretSource,
     ),
     endpointLabel: getSafeDisplayValue(
-      processEnv.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com',
+      processEnv.OPENAI_BASE_URL ?? 'http://localhost:11434/v1',
       secretSource,
     ),
     savedProfileLabel,

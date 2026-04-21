@@ -7,8 +7,6 @@
 
 import { isLocalProviderUrl, resolveProviderRequest } from '../services/api/providerConfig.js'
 import { getLocalOpenAICompatibleProviderLabel } from '../utils/providerDiscovery.js'
-import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
-import { parseUserSpecifiedModel } from '../utils/model/model.js'
 
 declare const MACRO: { VERSION: string; DISPLAY_VERSION?: string }
 
@@ -156,13 +154,8 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
     return { name, model: displayModel, baseUrl, isLocal }
   }
 
-  // Default: Google Gemini CLI - check settings.model first, then env vars
-  const settings = getSettings_DEPRECATED() || {}
-  const modelSetting = settings.model || process.env.GEMINI_MODEL || 'gemini-2.5-pro'
-  const resolvedModel = parseUserSpecifiedModel(modelSetting)
-  const baseUrl = process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'
-  const isLocal = isLocalProviderUrl(baseUrl)
-  return { name: 'Anthropic', model: resolvedModel, baseUrl, isLocal }
+  // Default: Ollama (local) - our fork's default provider
+  return { name: 'Ollama', model: process.env.OPENAI_MODEL || 'llama3.1:8b', baseUrl: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1', isLocal: true }
 }
 
 // ─── Box drawing ──────────────────────────────────────────────────────────────

@@ -356,6 +356,64 @@ with open('src/main.tsx', 'w') as f:
       git commit -m "chore: restore fork provider overrides after upstream merge" 2>/dev/null || true
     fi
 
+    # Restore StartupScreen.ts Ollama fallback
+    echo "  Checking StartupScreen.ts Ollama fallback..."
+    if grep -q "name: 'Anthropic'" src/components/StartupScreen.ts 2>/dev/null; then
+      echo "  WARNING: StartupScreen.ts reverted to Anthropic fallback!"
+      python3 -c "
+import re
+with open('src/components/StartupScreen.ts', 'r') as f:
+    content = f.read()
+
+old = r\"// Default: Google Gemini CLI - check settings\.model first, then env vars\n  const settings = getSettings_DEPRECATED\(\) \|\| \{\}\n  const modelSetting = settings\.model \|\| process\.env\.GEMINI_MODEL \|\| 'gemini-2\.5-pro'\n  const resolvedModel = parseUserSpecifiedModel\(modelSetting\)\n  const baseUrl = process\.env\.ANTHROPIC_BASE_URL \?\? 'https://api\.anthropic\.com'\n  const isLocal = isLocalProviderUrl\(baseUrl\)\n  return \{ name: 'Anthropic', model: resolvedModel, baseUrl, isLocal \}\"
+
+new = \"// Default: Ollama (local) - our fork's default provider\n  return { name: 'Ollama', model: process.env.OPENAI_MODEL || 'llama3.1:8b', baseUrl: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1', isLocal: true }\"
+
+content = re.sub(old, new, content)
+
+# Also remove unused imports
+content = re.sub(r\"import \{ getSettings_DEPRECATED \} from '\.\./utils/settings/settings\.js'\n\", '', content)
+content = re.sub(r\"import \{ parseUserSpecifiedModel \} from '\.\./utils/model/model\.js'\n\", '', content)
+
+with open('src/components/StartupScreen.ts', 'w') as f:
+    f.write(content)
+"
+      git add src/components/StartupScreen.ts
+    fi
+
+    # Restore provider.tsx Ollama fallback
+    echo "  Checking provider.tsx Ollama fallback..."
+    if grep -q "providerLabel: 'Anthropic'" src/commands/provider/provider.tsx 2>/dev/null; then
+      echo "  WARNING: provider.tsx reverted to Anthropic fallback!"
+      python3 -c "
+import re
+with open('src/commands/provider/provider.tsx', 'r') as f:
+    content = f.read()
+
+old = r\"return \{[\s\S]*?providerLabel: 'Anthropic',[\s\S]*?processEnv\.ANTHROPIC_MODEL \?\?[\s\S]*?processEnv\.CLAUDE_MODEL \?\?[\s\S]*?'claude-sonnet-4-6',[\s\S]*?processEnv\.ANTHROPIC_BASE_URL \?\? 'https://api\.anthropic\.com',[\s\S]*?\}\"
+
+new = \"\"\"// Default: Ollama (our fork's default provider)
+  return {
+    providerLabel: 'Ollama',
+    modelLabel: getSafeDisplayValue(
+      processEnv.OPENAI_MODEL ?? 'llama3.1:8b',
+      secretSource,
+    ),
+    endpointLabel: getSafeDisplayValue(
+      processEnv.OPENAI_BASE_URL ?? 'http://localhost:11434/v1',
+      secretSource,
+    ),
+    savedProfileLabel,
+  }\"\"\"
+
+content = re.sub(old, new, content)
+
+with open('src/commands/provider/provider.tsx', 'w') as f:
+    f.write(content)
+"
+      git add src/commands/provider/provider.tsx
+    fi
+
     # Restore ~/.claude as default config dir (envUtils.ts)
     echo "  Checking envUtils.ts config dir default..."
     if ! grep -q "OpenClaude fork: ~/.claude is the canonical default" src/utils/envUtils.ts 2>/dev/null; then
