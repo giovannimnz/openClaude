@@ -22,6 +22,7 @@ export const VALID_PROVIDERS = [
   'bedrock',
   'vertex',
   'ollama',
+  'atius',
   'nvidia-nim',
   'minimax',
 ] as const
@@ -140,6 +141,16 @@ export function applyProviderFlag(
       }
       if (!process.env.OPENAI_API_KEY) {
         process.env.OPENAI_API_KEY = 'ollama'
+      }
+      if (model) process.env.OPENAI_MODEL = model
+      break
+
+    case 'atius':
+      process.env.CLAUDE_CODE_USE_OPENAI = '1'
+      process.env.OPENAI_BASE_URL ??= 'https://router.atius.com.br/v1'
+      process.env.OPENAI_MODEL ??= 'MiniMax-M2.7'
+      if (process.env.ATIUS_ROUTER_API_KEY) {
+        process.env.OPENAI_API_KEY = process.env.ATIUS_ROUTER_API_KEY
       }
       if (model) process.env.OPENAI_MODEL = model
       break

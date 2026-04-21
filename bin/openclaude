@@ -1,4 +1,21 @@
 #!/bin/bash
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 PACKAGE_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
-exec node "$PACKAGE_DIR/dist/cli.mjs" "$@"
+
+# OpenClaude fork: always skip permissions by default
+# Users can override with --no-skip-permissions
+SKIP_FLAG=true
+NEW_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--no-skip-permissions" ]]; then
+    SKIP_FLAG=false
+  else
+    NEW_ARGS+=("$arg")
+  fi
+done
+
+if [[ "$SKIP_FLAG" == true ]]; then
+  exec node "$PACKAGE_DIR/dist/cli.mjs" --dangerously-skip-permissions "${NEW_ARGS[@]}"
+else
+  exec node "$PACKAGE_DIR/dist/cli.mjs" "${NEW_ARGS[@]}"
+fi

@@ -137,7 +137,7 @@ else
       fi
     fi
 
-    # Re-apply providerFlag.ts changes
+    # Re-apply providerFlag.ts changes (gemini remapping + atius provider)
     echo "  Checking providerFlag.ts fork mappings..."
     if grep -q "case 'gemini':" src/utils/providerFlag.ts 2>/dev/null; then
       if ! grep -A2 "case 'gemini':" src/utils/providerFlag.ts | grep -q "CLAUDE_CODE_USE_GEMINI_CLI"; then
@@ -157,6 +157,140 @@ else
       echo "  WARNING: gemini-api missing from VALID_PROVIDERS!"
       sed -i "s/'gemini',/'gemini',\n  'gemini-api',/" src/utils/providerFlag.ts
       git add src/utils/providerFlag.ts
+    fi
+    # Atius provider in VALID_PROVIDERS
+    if ! grep -q "'atius'" src/utils/providerFlag.ts 2>/dev/null; then
+      echo "  WARNING: atius missing from VALID_PROVIDERS!"
+      sed -i "s/'ollama',/'ollama',\n  'atius',/" src/utils/providerFlag.ts
+      git add src/utils/providerFlag.ts
+    fi
+    # Atius case in applyProviderFlag switch
+    if ! grep -q "case 'atius':" src/utils/providerFlag.ts 2>/dev/null; then
+      echo "  WARNING: atius case missing from applyProviderFlag!"
+      # Add atius case after ollama case
+      python3 -c "
+import re
+with open('src/utils/providerFlag.ts', 'r') as f:
+    content = f.read()
+
+atius_case = '''
+    case 'atius':
+      process.env.CLAUDE_CODE_USE_OPENAI = '1'
+      process.env.OPENAI_BASE_URL ??= 'https://router.atius.com.br/v1'
+      process.env.OPENAI_MODEL ??= 'MiniMax-M2.7'
+      if (process.env.ATIUS_ROUTER_API_KEY) {
+        process.env.OPENAI_API_KEY = process.env.ATIUS_ROUTER_API_KEY
+      }
+      if (model) process.env.OPENAI_MODEL = model
+      break
+'''
+
+# Insert atius case before the closing of the switch
+content = re.sub(
+    r\"(case 'ollama':.*?break)\n(\s*\})\",
+    r'\1' + atius_case + r'\2',
+    content,
+    flags=re.DOTALL
+)
+
+with open('src/utils/providerFlag.ts', 'w') as f:
+    f.write(content)
+"
+      git add src/utils/providerFlag.ts
+    fi
+
+    # Restore providerProfiles.ts atius preset
+    echo "  Checking providerProfiles.ts atius preset..."
+    if ! grep -q "case 'atius':" src/utils/providerProfiles.ts 2>/dev/null; then
+      echo "  WARNING: atius preset missing from providerProfiles.ts!"
+      python3 -c "
+import re
+with open('src/utils/providerProfiles.ts', 'r') as f:
+    content = f.read()
+
+atius_preset = '''    case 'atius':
+      return {
+        provider: 'openai',
+        name: 'Atius',
+        baseUrl: 'https://router.atius.com.br/v1',
+        model: 'MiniMax-M2.7',
+        apiKey: process.env.ATIUS_ROUTER_API_KEY ?? '',
+        requiresApiKey: true,
+      }
+'''
+
+# Add atius to ProviderPreset type
+content = content.replace(
+    \"| 'ollama'\",
+    \"| 'ollama'\n       | 'atius'\"
+)
+
+# Insert atius preset after ollama preset
+content = re.sub(
+    r\"(case 'ollama':.*?return \{[^}]+\})\n(\s*case)\",
+    r'\1\n\n' + atius_preset + r'\n\2',
+    content,
+    flags=re.DOTALL
+)
+
+with open('src/utils/providerProfiles.ts', 'w') as f:
+    f.write(content)
+"
+      git add src/utils/providerProfiles.ts
+    fi
+
+    # Restore providers.ts Ollama default
+    echo "  Checking providers.ts Ollama default..."
+    if grep -q "return 'firstParty'" src/utils/model/providers.ts 2>/dev/null; then
+      echo "  WARNING: providers.ts reverted to firstParty default!"
+      sed -i "s/return 'firstParty'/return 'ollama'/" src/utils/model/providers.ts
+      git add src/utils/model/providers.ts
+    fi
+    # Check isFirstPartyAnthropicBaseUrl stub
+    if grep -q "return true" src/utils/model/providers.ts 2>/dev/null | head -1; then
+      if grep -A2 "isFirstPartyAnthropicBaseUrl" src/utils/model/providers.ts | grep -q "return true"; then
+        echo "  WARNING: isFirstPartyAnthropicBaseUrl should return false!"
+        sed -i "/export function isFirstPartyAnthropicBaseUrl/,/^}/ { s/return true/return false/ }" src/utils/model/providers.ts
+        git add src/utils/model/providers.ts
+      fi
+    fi
+
+    # Restore forkProviderOverrides.ts Atius auto-detection
+    echo "  Checking forkProviderOverrides.ts Atius auto-detection..."
+    if [[ -f "src/utils/forkProviderOverrides.ts" ]]; then
+      if ! grep -q "ATIUS_ROUTER_API_KEY" src/utils/forkProviderOverrides.ts 2>/dev/null; then
+        echo "  WARNING: Atius auto-detection was overwritten!"
+        git checkout HEAD -- src/utils/forkProviderOverrides.ts 2>/dev/null || echo "  Could not restore, file not in our history"
+      fi
+    fi
+
+    # Restore bin/openclaude --dangerously-skip-permissions default
+    echo "  Checking bin/openclaude --dangerously-skip-permissions..."
+    if ! grep -q "\-\-dangerously-skip-permissions" bin/openclaude 2>/dev/null; then
+      echo "  WARNING: --dangerously-skip-permissions default was removed!"
+      cat > bin/openclaude << 'BINSCRIPT'
+#!/bin/bash
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PACKAGE_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
+
+SKIP_FLAG=true
+NEW_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--no-skip-permissions" ]]; then
+    SKIP_FLAG=false
+  else
+    NEW_ARGS+=("$arg")
+  fi
+done
+
+if [[ "$SKIP_FLAG" == true ]]; then
+  exec node "$PACKAGE_DIR/dist/cli.mjs" --dangerously-skip-permissions "${NEW_ARGS[@]}"
+else
+  exec node "$PACKAGE_DIR/dist/cli.mjs" "${NEW_ARGS[@]}"
+fi
+BINSCRIPT
+      chmod +x bin/openclaude
+      git add bin/openclaude
     fi
 
     # Commit the restored overrides if anything was changed

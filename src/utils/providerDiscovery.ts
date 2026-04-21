@@ -197,6 +197,10 @@ export function getLocalOpenAICompatibleProviderLabel(baseUrl?: string): string 
     if (host.includes('minimax') || haystack.includes('minimax')) {
       return 'MiniMax'
     }
+    // Check for Atius router
+    if (host.includes('router.atius.com.br') || haystack.includes('atius')) {
+      return 'Atius'
+    }
   } catch {
     // Fall back to the generic label when the base URL is malformed.
   }

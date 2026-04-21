@@ -41,6 +41,7 @@ import {
 import { getCachedOllamaModelOptions, isOllamaProvider } from './ollamaModels.js'
 import { getCachedNvidiaNimModelOptions, isNvidiaNimProvider } from './nvidiaNimModels.js'
 import { getCachedMiniMaxModelOptions, isMiniMaxProvider } from './minimaxModels.js'
+import { getCachedAtiusModelOptions, isAtiusProvider } from './atiusModels.js'
 import { getAntModels } from './antModels.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
@@ -413,6 +414,17 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     if (minimaxModels.length > 0) {
       return [defaultOption, ...minimaxModels]
     }
+    return [defaultOption]
+  }
+
+  // When using Atius router, show models from the Atius catalog
+  if (isAtiusProvider()) {
+    const defaultOption = getDefaultOptionForUser(fastMode)
+    const atiusModels = getCachedAtiusModelOptions()
+    if (atiusModels.length > 0) {
+      return [defaultOption, ...atiusModels]
+    }
+    // Fallback: show default model if models not yet fetched
     return [defaultOption]
   }
 

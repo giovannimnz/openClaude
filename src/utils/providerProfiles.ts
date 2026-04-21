@@ -17,6 +17,7 @@ import {
 
 export type ProviderPreset =
   | 'ollama'
+  | 'atius'
   | 'openai'
   | 'moonshotai'
   | 'deepseek'
@@ -284,6 +285,15 @@ export function getProviderPresetDefaults(
         baseUrl: 'https://api.minimax.io/v1',
         model: 'MiniMax-M2.5',
         apiKey: process.env.MINIMAX_API_KEY ?? '',
+        requiresApiKey: true,
+      }
+    case 'atius':
+      return {
+        provider: 'openai',
+        name: 'Atius',
+        baseUrl: 'https://router.atius.com.br/v1',
+        model: 'MiniMax-M2.7',
+        apiKey: process.env.ATIUS_ROUTER_API_KEY ?? '',
         requiresApiKey: true,
       }
     case 'ollama':
