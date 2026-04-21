@@ -15,6 +15,7 @@
 export const VALID_PROVIDERS = [
   'openai',
   'gemini',
+  'gemini-api',
   'google-gemini-cli',
   'mistral',
   'github',
@@ -98,6 +99,13 @@ export function applyProviderFlag(
       break
 
     case 'gemini':
+      // OpenClaude fork: gemini flag routes to Gemini CLI (OAuth)
+      process.env.CLAUDE_CODE_USE_GEMINI_CLI = '1'
+      if (model) process.env.GEMINI_MODEL = model
+      break
+
+    case 'gemini-api':
+      // OpenClaude fork: gemini-api routes to Gemini API (key-based)
       process.env.CLAUDE_CODE_USE_GEMINI = '1'
       if (model) process.env.GEMINI_MODEL = model
       break

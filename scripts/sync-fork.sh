@@ -80,7 +80,7 @@ else
 fi
 
 # Merge from upstream with auto-resolution
-echo "[5/6] Merging upstream/$BRANCH into $BRANCH..."
+echo "[5/7] Merging upstream/$BRANCH into $BRANCH..."
 if [[ "$DRY_RUN" == true ]]; then
   echo "  (skipped - dry run)"
 else
@@ -99,10 +99,78 @@ else
     exit 1
   }
   echo "  $MERGE_OUTPUT"
+
+  # Restore fork-specific overrides after merge
+  echo ""
+  echo "[6/7] Restoring fork provider overrides..."
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "  (skipped - dry run)"
+  else
+    # Re-apply forkProviderOverrides.ts if it exists (our custom override)
+    if [[ -f "src/utils/forkProviderOverrides.ts" ]]; then
+      echo "  forkProviderOverrides.ts exists, checking integrity..."
+      if ! grep -q "applyForkProviderOverrides" src/utils/forkProviderOverrides.ts 2>/dev/null; then
+        echo "  WARNING: forkProviderOverrides.ts was overwritten by merge!"
+        echo "  Restoring from git..."
+        git checkout HEAD -- src/utils/forkProviderOverrides.ts 2>/dev/null || echo "  Could not restore, file not in our history"
+      fi
+    fi
+
+    # Re-integrate override into cli.tsx entrypoint
+    echo "  Checking cli.tsx entrypoint integration..."
+    if ! grep -q "applyForkProviderOverrides" src/entrypoints/cli.tsx 2>/dev/null; then
+      echo "  WARNING: cli.tsx fork override integration was lost!"
+      echo "  Re-applying..."
+      if grep -q "applyProviderFlagFromArgs" src/entrypoints/cli.tsx 2>/dev/null; then
+        # Find the closing brace of the --provider block and add our override after it
+        sed -i '/applyProviderFlagFromArgs/,/^  }/{
+          /^  }/a\
+\
+  // OpenClaude fork: remap CLAUDE_CODE_USE_GEMINI -> Gemini CLI,\
+  // CLAUDE_CODE_USE_GEMINI_API -> Gemini API\
+  {\
+    const { applyForkProviderOverrides } = await import('\''../utils/forkProviderOverrides.js'\'');\
+    applyForkProviderOverrides();\
+  }
+        }' src/entrypoints/cli.tsx
+        git add src/entrypoints/cli.tsx
+      fi
+    fi
+
+    # Re-apply providerFlag.ts changes
+    echo "  Checking providerFlag.ts fork mappings..."
+    if grep -q "case 'gemini':" src/utils/providerFlag.ts 2>/dev/null; then
+      if ! grep -A2 "case 'gemini':" src/utils/providerFlag.ts | grep -q "CLAUDE_CODE_USE_GEMINI_CLI"; then
+        echo "  WARNING: gemini case in providerFlag.ts was overwritten!"
+        sed -i "/case 'gemini':/{n;s/.*/      \/\/ OpenClaude fork: gemini flag routes to Gemini CLI (OAuth)\n      process.env.CLAUDE_CODE_USE_GEMINI_CLI = '1'/}" src/utils/providerFlag.ts
+        git add src/utils/providerFlag.ts
+      fi
+    fi
+    if grep -q "case 'gemini-api':" src/utils/providerFlag.ts 2>/dev/null; then
+      if ! grep -A2 "case 'gemini-api':" src/utils/providerFlag.ts | grep -q "CLAUDE_CODE_USE_GEMINI = '1'"; then
+        echo "  WARNING: gemini-api case in providerFlag.ts was overwritten!"
+        sed -i "/case 'gemini-api':/{n;s/.*/      \/\/ OpenClaude fork: gemini-api routes to Gemini API (key-based)\n      process.env.CLAUDE_CODE_USE_GEMINI = '1'/}" src/utils/providerFlag.ts
+        git add src/utils/providerFlag.ts
+      fi
+    fi
+    if ! grep -q "'gemini-api'" src/utils/providerFlag.ts 2>/dev/null; then
+      echo "  WARNING: gemini-api missing from VALID_PROVIDERS!"
+      sed -i "s/'gemini',/'gemini',\n  'gemini-api',/" src/utils/providerFlag.ts
+      git add src/utils/providerFlag.ts
+    fi
+
+    # Commit the restored overrides if anything was changed
+    if git diff --cached --quiet 2>/dev/null; then
+      echo "  All fork overrides intact, no changes needed."
+    else
+      echo "  Committing restored fork overrides..."
+      git commit -m "chore: restore fork provider overrides after upstream merge" 2>/dev/null || true
+    fi
+  fi
 fi
 
 # Push to origin
-echo "[6/6] Pushing to origin..."
+echo "[7/7] Pushing to origin..."
 if [[ "$DRY_RUN" == true ]]; then
   echo "  (skipped - dry run)"
 else

@@ -100,6 +100,13 @@ async function main(): Promise<void> {
     }
   }
 
+  // OpenClaude fork: remap CLAUDE_CODE_USE_GEMINI -> Gemini CLI,
+  // CLAUDE_CODE_USE_VERTEX -> Gemini API
+  {
+    const { applyForkProviderOverrides } = await import('../utils/forkProviderOverrides.js');
+    applyForkProviderOverrides();
+  }
+
   // Enable configs first so we can read settings
   {
     const { enableConfigs } = await import('../utils/config.js')
