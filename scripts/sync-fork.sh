@@ -166,6 +166,58 @@ else
       echo "  Committing restored fork overrides..."
       git commit -m "chore: restore fork provider overrides after upstream merge" 2>/dev/null || true
     fi
+
+    # Restore ~/.claude as default config dir (envUtils.ts)
+    echo "  Checking envUtils.ts config dir default..."
+    if ! grep -q "OpenClaude fork: ~/.claude is the canonical default" src/utils/envUtils.ts 2>/dev/null; then
+      echo "  WARNING: envUtils.ts was overwritten by merge! Restoring ~/.claude default..."
+      if grep -q "resolveClaudeConfigHomeDir" src/utils/envUtils.ts 2>/dev/null; then
+        # Replace the entire function with our fork version
+        python3 -c "
+import re, sys
+with open('src/utils/envUtils.ts', 'r') as f:
+    content = f.read()
+
+old_func = re.compile(
+    r'export function resolveClaudeConfigHomeDir\(options\?: \{[^}]+\}\): string \{.*?return openClaudeDir\.normalize\(\"NFC\"\)\n\}',
+    re.DOTALL
+)
+
+new_func = '''export function resolveClaudeConfigHomeDir(options?: {
+  configDirEnv?: string
+  homeDir?: string
+  claudeExists?: boolean
+  openClaudeExists?: boolean
+}): string {
+  if (options?.configDirEnv) {
+    return options.configDirEnv.normalize('NFC')
+  }
+
+  const homeDir = options?.homeDir ?? homedir()
+  const claudeDir = join(homeDir, '.claude')
+  const openClaudeDir = join(homeDir, '.openclaude')
+  const claudeExists =
+    options?.claudeExists ?? existsSync(claudeDir)
+  const openClaudeExists =
+    options?.openClaudeExists ?? existsSync(openClaudeDir)
+
+  // OpenClaude fork: ~/.claude is the canonical default.
+  // Fall back to ~/.openclaude only if it exists and ~/.claude does not.
+  if (!claudeExists && openClaudeExists) {
+    return openClaudeDir.normalize('NFC')
+  }
+
+  return claudeDir.normalize('NFC')
+}'''
+
+content = old_func.sub(new_func, content)
+with open('src/utils/envUtils.ts', 'w') as f:
+    f.write(content)
+"
+        git add src/utils/envUtils.ts
+        git commit -m "chore: restore ~/.claude as default config dir after upstream merge" 2>/dev/null || true
+      fi
+    fi
   fi
 fi
 
