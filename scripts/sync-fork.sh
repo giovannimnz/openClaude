@@ -293,6 +293,61 @@ BINSCRIPT
       git add bin/openclaude
     fi
 
+    # Restore GSD bootstrap integration
+    echo "  Checking GSD bootstrap integration..."
+    if [[ -f "src/utils/gsdBootstrap.ts" ]]; then
+      if ! grep -q "bootstrapGsd" src/utils/gsdBootstrap.ts 2>/dev/null; then
+        echo "  WARNING: gsdBootstrap.ts was overwritten!"
+        git checkout HEAD -- src/utils/gsdBootstrap.ts 2>/dev/null || echo "  Could not restore, file not in our history"
+      fi
+    fi
+    if ! grep -q "gsdBootstrap" src/entrypoints/init.ts 2>/dev/null; then
+      echo "  WARNING: GSD bootstrap import lost in init.ts!"
+      # Add import after config.js import
+      if grep -q "from '../utils/config.js'" src/entrypoints/init.ts 2>/dev/null; then
+        sed -i "/from '..\/utils\/config.js'/a import { bootstrapGsd } from '../utils/gsdBootstrap.js'" src/entrypoints/init.ts
+        git add src/entrypoints/init.ts
+      fi
+    fi
+    if ! grep -q "bootstrapGsd()" src/entrypoints/init.ts 2>/dev/null; then
+      echo "  WARNING: GSD bootstrap call lost in init.ts!"
+      # Add call after recordFirstStartTime()
+      if grep -q "recordFirstStartTime()" src/entrypoints/init.ts 2>/dev/null; then
+        sed -i "/recordFirstStartTime()/a\\n    // OpenClaude fork: Bootstrap GSD (get-shit-done) on first launch\n    bootstrapGsd()" src/entrypoints/init.ts
+        git add src/entrypoints/init.ts
+      fi
+    fi
+    if ! grep -q "getFirstLaunchSlashCommand" src/main.tsx 2>/dev/null; then
+      echo "  WARNING: GSD auto-command injection lost in main.tsx!"
+      # Add after getInputPrompt line
+      if grep -q "await getInputPrompt" src/main.tsx 2>/dev/null; then
+        python3 -c "
+import re
+with open('src/main.tsx', 'r') as f:
+    content = f.read()
+
+# Add GSD auto-command injection after getInputPrompt
+pattern = r\"(let inputPrompt = await getInputPrompt\(effectivePrompt.*?\);)\"
+replacement = r'''\1
+
+    // OpenClaude fork: Auto-run /gsd-update on first launch after GSD install
+    if (typeof inputPrompt === 'string') {
+      const { getFirstLaunchSlashCommand } = await import('./utils/gsdBootstrap.js');
+      const autoCommand = getFirstLaunchSlashCommand();
+      if (autoCommand) {
+        inputPrompt = inputPrompt ? \`\${autoCommand}\\n\\n\${inputPrompt}\` : autoCommand;
+      }
+    }'''
+
+content = re.sub(pattern, replacement, content, count=1)
+
+with open('src/main.tsx', 'w') as f:
+    f.write(content)
+"
+        git add src/main.tsx
+      fi
+    fi
+
     # Commit the restored overrides if anything was changed
     if git diff --cached --quiet 2>/dev/null; then
       echo "  All fork overrides intact, no changes needed."

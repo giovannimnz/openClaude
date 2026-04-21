@@ -1854,6 +1854,15 @@ async function run(): Promise<CommanderCommand> {
     }
     const effectivePrompt = prompt || '';
     let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
+
+    // OpenClaude fork: Auto-run /gsd-update on first launch after GSD install
+    if (typeof inputPrompt === 'string') {
+      const { getFirstLaunchSlashCommand } = await import('./utils/gsdBootstrap.js');
+      const autoCommand = getFirstLaunchSlashCommand();
+      if (autoCommand) {
+        inputPrompt = inputPrompt ? `${autoCommand}\n\n${inputPrompt}` : autoCommand;
+      }
+    }
     profileCheckpoint('action_after_input_prompt');
 
     // Activate proactive mode BEFORE getTools() so SleepTool.isEnabled()

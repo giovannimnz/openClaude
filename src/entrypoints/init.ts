@@ -21,6 +21,7 @@ import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { enableConfigs, recordFirstStartTime } from '../utils/config.js'
+import { bootstrapGsd } from '../utils/gsdBootstrap.js'
 import { logForDebugging } from '../utils/debug.js'
 import { detectCurrentRepository } from '../utils/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
@@ -130,6 +131,9 @@ export const init = memoize(async (): Promise<void> => {
 
     // Record the first start time
     recordFirstStartTime()
+
+    // OpenClaude fork: Bootstrap GSD (get-shit-done) on first launch
+    bootstrapGsd()
 
     // Configure global mTLS settings
     const mtlsStart = Date.now()
