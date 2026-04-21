@@ -29,11 +29,11 @@ import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 
 export async function update() {
-  // Block updates for third-party providers. The update mechanism downloads
-  // from the first-party distribution bucket, which would silently replace the
-  // OpenClaude build (with the OpenAI shim) with the upstream Claude Code
-  // binary (without it).
-  if (getAPIProvider() !== 'firstParty') {
+  // Block updates for third-party provider builds UNLESS we are the OpenClaude
+  // fork (identified by package URL). The fork tracks its own version on npm
+  // as @gitlawb/openclaude with incremental suffixes.
+  const isFork = MACRO.PACKAGE_URL && MACRO.PACKAGE_URL.includes('openclaude')
+  if (getAPIProvider() !== 'firstParty' && !isFork) {
     writeToStdout(
       chalk.yellow('Auto-update is not available for third-party provider builds.\n') +
       'To update, pull the latest source from the repository and rebuild:\n' +

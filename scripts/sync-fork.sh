@@ -514,8 +514,36 @@ with open('src/utils/envUtils.ts', 'w') as f:
   fi
 fi
 
+# Auto-bump fork version to match upstream + incremental suffix
+echo "[7/8] Bumping fork version..."
+if [[ "$DRY_RUN" == true ]]; then
+  echo "  (skipped - dry run)"
+else
+  if command -v bun &> /dev/null; then
+    BUN_CMD="bun"
+  elif [[ -f "$HOME/.bun/bin/bun" ]]; then
+    BUN_CMD="$HOME/.bun/bin/bun"
+  else
+    echo "  WARNING: bun not found, skipping version bump"
+    BUN_CMD=""
+  fi
+  if [[ -n "$BUN_CMD" ]]; then
+    CURRENT_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")"
+    echo "  Current version: $CURRENT_VERSION"
+    $BUN_CMD run scripts/version-bump.ts 2>&1 || echo "  WARNING: version bump failed"
+    NEW_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")"
+    if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
+      echo "  Version bumped: $CURRENT_VERSION -> $NEW_VERSION"
+      git add package.json
+      git commit -m "chore: bump version to $NEW_VERSION after upstream sync" 2>/dev/null || true
+    else
+      echo "  Version unchanged, no bump needed"
+    fi
+  fi
+fi
+
 # Push to origin
-echo "[7/7] Pushing to origin..."
+echo "[8/8] Pushing to origin..."
 if [[ "$DRY_RUN" == true ]]; then
   echo "  (skipped - dry run)"
 else

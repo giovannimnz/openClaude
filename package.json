@@ -1,6 +1,6 @@
 {
   "name": "@gitlawb/openclaude",
-  "version": "0.5.2",
+  "version": "0.5.2.1",
   "description": "Claude Code opened to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
@@ -51,6 +51,10 @@
     "doctor:report": "bun run scripts/system-check.ts --out reports/doctor-runtime.json",
     "hardening:check": "bun run smoke && bun run doctor:runtime",
     "hardening:strict": "bun run typecheck && bun run hardening:check",
+    "version:bump": "bun run scripts/version-bump.ts",
+    "version:bump:check": "bun run scripts/version-bump.ts --check",
+    "release": "bun run build && bun run scripts/release.ts",
+    "release:check": "bun run build && bun run scripts/version-bump.ts --check",
     "prepack": "npm run build"
   },
   "dependencies": {
