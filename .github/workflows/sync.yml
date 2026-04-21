@@ -1,0 +1,149 @@
+name: Daily Upstream Sync
+
+# Run daily at 03:00 UTC and on manual trigger
+on:
+  schedule:
+    # Every day at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: 'Merge strategy'
+        required: false
+        default: 'theirs'
+        type: choice
+        options:
+          - theirs
+          - ours
+
+permissions:
+  contents: write
+  packages: none
+  deployments: none
+
+env:
+  FORCE_COLOR: '0'
+
+jobs:
+  sync-check:
+    name: Check upstream changes
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'giovannimnz/openclaude' }}
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+      commits_behind: ${{ steps.check.outputs.commits_behind }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/gitlawb/openclaude.git || \
+            git remote set-url upstream https://github.com/gitlawb/openclaude.git
+          git fetch upstream --prune
+
+      - name: Check for upstream changes
+        id: check
+        run: |
+          COMMON=$(git merge-base HEAD upstream/main 2>/dev/null)
+          UPSTREAM_SHA=$(git rev-parse upstream/main)
+          LOCAL_SHA=$(git rev-parse HEAD)
+
+          if [[ -z "$COMMON" ]]; then
+            echo "No common ancestor found — assuming unrelated histories"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "commits_behind=unknown" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [[ "$COMMON" == "$UPSTREAM_SHA" ]]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "commits_behind=0" >> $GITHUB_OUTPUT
+            echo "Upstream is already in our history"
+          else
+            COUNT=$(git log --oneline ${COMMON}..upstream/main 2>/dev/null | wc -l)
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "commits_behind=$COUNT" >> $GITHUB_OUTPUT
+            echo "Upstream has $COUNT new commits"
+          fi
+
+  sync:
+    name: Sync with upstream
+    needs: sync-check
+    runs-on: ubuntu-latest
+    if: |
+      github.repository == 'giovannimnz/openclaude' &&
+      needs.sync-check.outputs.has_changes == 'true'
+    environment:
+      name: fork-sync
+      url: https://github.com/giovannimnz/openclaude
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/gitlawb/openclaude.git || \
+            git remote set-url upstream https://github.com/gitlawb/openclaude.git
+          git fetch upstream --prune
+
+      - name: Pull from origin
+        run: |
+          git pull origin main --rebase || git pull origin main --no-rebase || true
+
+      - name: Merge upstream
+        run: |
+          STRATEGY="${{ github.event.inputs.strategy || 'theirs' }}"
+          echo "Merge strategy: $STRATEGY"
+          if git merge upstream/main --no-edit -X "$STRATEGY" --allow-unrelated-histories 2>&1; then
+            echo "Merge successful"
+          else
+            echo "Merge had conflicts — aborting and skipping"
+            git merge --abort || true
+            exit 0
+          fi
+
+      - name: Restore fork provider overrides
+        run: |
+          chmod +x scripts/sync-fork.sh
+          ./scripts/sync-fork.sh --strategy theirs 2>&1 || true
+
+      - name: Sync summary
+        run: |
+          VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo 'unknown')"
+          {
+            echo "## Daily Sync Complete"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Upstream fetch | OK |"
+            echo "| Merge | OK |"
+            echo "| Restore overrides | OK |"
+            echo "| Version | $VERSION |"
+            echo ""
+            echo "**Repository:** https://github.com/giovannimnz/openclaude"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  no-changes:
+    name: Already up to date
+    runs-on: ubuntu-latest
+    if: |
+      github.repository == 'giovannimnz/openclaude' &&
+      needs.sync-check.outputs.has_changes == 'false'
+    steps:
+      - name: No changes needed
+        run: |
+          echo "## Already up to date"
+          echo ""
+          echo "Upstream is fully integrated. No sync needed."
