@@ -328,3 +328,37 @@ export async function authLogout(): Promise<void> {
   process.stdout.write('Successfully logged out from your Anthropic account.\n')
   process.exit(0)
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Gemini OAuth support (google-gemini-cli)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Login with Google Gemini CLI OAuth
+ */
+export async function authLoginGemini(): Promise<void> {
+  const {
+    geminiLogin,
+  } = await import('../../commands/auth/gemini-oauth-handler.js')
+  return geminiLogin()
+}
+
+/**
+ * Logout from Gemini OAuth
+ */
+export async function authLogoutGemini(): Promise<void> {
+  const {
+    geminiLogout,
+  } = await import('../../commands/auth/gemini-oauth-handler.js')
+  return geminiLogout()
+}
+
+/**
+ * Check Gemini OAuth status
+ */
+export async function authStatusGemini(): Promise<void> {
+  const {
+    geminiStatus,
+  } = await import('../../commands/auth/gemini-oauth-handler.js')
+  return geminiStatus()
+}

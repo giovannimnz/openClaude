@@ -11,6 +11,7 @@ import {
 import { Dialog } from '../../components/design-system/Dialog.js'
 import { LoadingState } from '../../components/design-system/LoadingState.js'
 import { useCodexOAuthFlow } from '../../components/useCodexOAuthFlow.js'
+import { GeminiOAuthStep } from './GeminiOAuthStep.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { Box, Text } from '../../ink.js'
 import {
@@ -104,7 +105,7 @@ function describeOllamaReadinessIssue(
   return ''
 }
 
-type ProviderChoice = 'auto' | ProviderProfile | 'codex-oauth' | 'clear'
+type ProviderChoice = 'auto' | ProviderProfile | 'codex-oauth' | 'gemini-oauth' | 'clear'
 
 type Step =
   | { name: 'choose' }
@@ -136,6 +137,7 @@ type Step =
       authMode: 'api-key' | 'access-token' | 'adc'
     }
   | { name: 'codex-oauth' }
+  | { name: 'gemini-oauth' }
   | { name: 'codex-check' }
 
 type CurrentProviderSummary = {
@@ -635,6 +637,11 @@ function ProviderChooser({
       label: 'Codex',
       value: 'codex',
       description: 'Use existing ChatGPT Codex CLI auth or env credentials',
+    },
+    {
+      label: 'Google-Gemini-Cli',
+      value: 'gemini-oauth' as const,
+      description: 'Sign in with Google Gemini CLI and store tokens securely',
     },
     ...(canUseCodexOAuth
       ? [
@@ -1235,6 +1242,8 @@ export function ProviderWizard({
               })
             } else if (value === 'codex-oauth') {
               setStep({ name: 'codex-oauth' })
+            } else if (value === 'gemini-oauth') {
+              setStep({ name: 'gemini-oauth' })
             } else if (value === 'clear') {
               const filePath = deleteProfileFile()
               onDone(`Removed saved provider profile at ${filePath}. Restart OpenClaude to go back to normal startup.`, {
@@ -1674,6 +1683,15 @@ export function ProviderWizard({
     case 'codex-oauth':
       return (
         <CodexOAuthStep
+          onSave={(profile, env) => finishProfileSave(onDone, profile, env)}
+          onBack={() => setStep({ name: 'choose' })}
+          onCancel={() => onDone()}
+        />
+      )
+
+    case 'gemini-oauth':
+      return (
+        <GeminiOAuthStep
           onSave={(profile, env) => finishProfileSave(onDone, profile, env)}
           onBack={() => setStep({ name: 'choose' })}
           onCancel={() => onDone()}
