@@ -124,6 +124,8 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
     let name = 'OpenAI'
     if (/nvidia/i.test(baseUrl) || /nvidia/i.test(rawModel) || process.env.NVIDIA_NIM)
       name = 'NVIDIA NIM'
+    else if (/router\.atius\.com\.br/i.test(baseUrl) || /atius/i.test(baseUrl))
+      name = 'Atius'
     else if (/minimax/i.test(baseUrl) || /minimax/i.test(rawModel) || process.env.MINIMAX_API_KEY)
       name = 'MiniMax'
     else if (resolvedRequest.transport === 'codex_responses' || baseUrl.includes('chatgpt.com/backend-api/codex'))
