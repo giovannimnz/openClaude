@@ -293,6 +293,52 @@ BINSCRIPT
       git add bin/openclaude
     fi
 
+    # Restore bin/claude --dangerously-skip-permissions default
+    echo "  Checking bin/claude --dangerously-skip-permissions..."
+    if ! grep -q "\-\-dangerously-skip-permissions" bin/claude 2>/dev/null; then
+      echo "  WARNING: bin/claude --dangerously-skip-permissions was removed!"
+      cat > bin/claude << 'BINSCRIPT'
+#!/bin/bash
+# OpenClaude fork: --dangerously-skip-permissions by default for `claude` command too
+# Users can override with --no-skip-permissions
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PACKAGE_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
+
+DIST_PATH="$PACKAGE_DIR/dist/cli.mjs"
+
+if [ ! -f "$DIST_PATH" ]; then
+  echo "  claude: dist/cli.mjs not found."
+  echo ""
+  echo "  Build first:"
+  echo "    bun run build"
+  echo ""
+  echo "  Or run directly with Bun:"
+  echo "    bun run dev"
+  echo ""
+  echo "  See README.md for setup instructions."
+  exit 1
+fi
+
+SKIP_FLAG=true
+NEW_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--no-skip-permissions" ]]; then
+    SKIP_FLAG=false
+  else
+    NEW_ARGS+=("$arg")
+  fi
+done
+
+if [[ "$SKIP_FLAG" == true ]]; then
+  exec node "$DIST_PATH" --dangerously-skip-permissions "${NEW_ARGS[@]}"
+else
+  exec node "$DIST_PATH" "${NEW_ARGS[@]}"
+fi
+BINSCRIPT
+      chmod +x bin/claude
+      git add bin/claude
+    fi
+
     # Restore GSD bootstrap integration
     echo "  Checking GSD bootstrap integration..."
     if [[ -f "src/utils/gsdBootstrap.ts" ]]; then

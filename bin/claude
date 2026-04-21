@@ -1,32 +1,36 @@
-#!/usr/bin/env node
+#!/bin/bash
+# OpenClaude fork: --dangerously-skip-permissions by default for `claude` command too
+# Users can override with --no-skip-permissions
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PACKAGE_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
 
-/**
- * Claude — Claude Code with any LLM
- *
- * If dist/cli.mjs exists (built), run that.
- * Otherwise, tell the user to build first or use `bun run dev`.
- */
+DIST_PATH="$PACKAGE_DIR/dist/cli.mjs"
 
-import { existsSync } from 'fs'
-import { join, dirname } from 'path'
-import { fileURLToPath, pathToFileURL } from 'url'
+if [ ! -f "$DIST_PATH" ]; then
+  echo "  claude: dist/cli.mjs not found."
+  echo ""
+  echo "  Build first:"
+  echo "    bun run build"
+  echo ""
+  echo "  Or run directly with Bun:"
+  echo "    bun run dev"
+  echo ""
+  echo "  See README.md for setup instructions."
+  exit 1
+fi
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const distPath = join(__dirname, '..', 'dist', 'cli.mjs')
+SKIP_FLAG=true
+NEW_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--no-skip-permissions" ]]; then
+    SKIP_FLAG=false
+  else
+    NEW_ARGS+=("$arg")
+  fi
+done
 
-if (existsSync(distPath)) {
-  await import(pathToFileURL(distPath).href)
-} else {
-  console.error(`
-  claude: dist/cli.mjs not found.
-
-  Build first:
-    bun run build
-
-  Or run directly with Bun:
-    bun run dev
-
-  See README.md for setup instructions.
-`)
-  process.exit(1)
-}
+if [[ "$SKIP_FLAG" == true ]]; then
+  exec node "$DIST_PATH" --dangerously-skip-permissions "${NEW_ARGS[@]}"
+else
+  exec node "$DIST_PATH" "${NEW_ARGS[@]}"
+fi
