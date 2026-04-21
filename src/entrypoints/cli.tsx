@@ -1,7 +1,3 @@
-// TTY Debug - must be first thing that runs
-console.error(`[TTY CHECK] stdout.isTTY = ${process.stdout.isTTY}`);
-console.error(`[TTY CHECK] stdin.isTTY = ${process.stdin.isTTY}`);
-
 import { feature } from 'bun:bundle';
 import {
   applyProfileEnvToProcessEnv,

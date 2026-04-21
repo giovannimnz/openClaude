@@ -2220,9 +2220,7 @@ async function run(): Promise<CommanderCommand> {
       const {
         createRoot
       } = await import('./ink.js');
-      console.error('[DEBUG] Creating Ink root...');
       root = await createRoot(ctx.renderOptions);
-      console.error('[DEBUG] Ink root created');
 
       // Log startup time now, before any blocking dialog renders. Logging
       // from REPL's first render (the old location) included however long
@@ -2232,10 +2230,8 @@ async function run(): Promise<CommanderCommand> {
         event: 'startup' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         durationMs: Math.round(process.uptime() * 1000)
       });
-      console.error('[DEBUG] Calling showSetupScreens...');
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
-      console.error(`[DEBUG] showSetupScreens completed (onboardingShown: ${onboardingShown})`);
 
       // Now that trust is established and GrowthBook has auth headers,
       // resolve the --remote-control / --rc entitlement gate.
@@ -3783,7 +3779,6 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       const initialMessages = deepLinkBanner ? [deepLinkBanner, ...hookMessages] : hookMessages.length > 0 ? hookMessages : undefined;
-      console.error('[DEBUG] About to call launchRepl...');
       await launchRepl(root, {
         getFpsMetrics,
         stats,
@@ -3793,7 +3788,6 @@ async function run(): Promise<CommanderCommand> {
         initialMessages,
         pendingHookMessages
       }, renderAndRun);
-      console.error('[DEBUG] launchRepl returned');
     }
   }).version(`${MACRO.DISPLAY_VERSION ?? MACRO.VERSION} (Open Claude)`, '-v, --version', 'Output the version number');
 

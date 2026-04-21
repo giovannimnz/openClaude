@@ -98,16 +98,11 @@ export function showSetupDialog<T = void>(root: Root, renderer: (done: (result: 
  */
 export async function renderAndRun(root: Root, element: React.ReactNode): Promise<void> {
   try {
-    console.error('[DEBUG] renderAndRun: calling root.render...');
     root.render(element);
-    console.error('[DEBUG] renderAndRun: root.render done, starting deferred prefetches...');
     startDeferredPrefetches();
-    console.error('[DEBUG] renderAndRun: waiting for exit...');
     await root.waitUntilExit();
-    console.error('[DEBUG] renderAndRun: root exited, calling gracefulShutdown...');
     await gracefulShutdown(0);
   } catch (error) {
-    console.error('[DEBUG] renderAndRun error:', error);
     throw error;
   }
 }
