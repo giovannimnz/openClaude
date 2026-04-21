@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.2.1](https://github.com/giovannimnz/openClaude/compare/v0.5.2...v0.5.2.1) (2026-04-21)
+
+### Features
+
+* **atius provider**: Built-in preset for Atius OpenAI-compatible API (`router.atius.com.br`) with proper provider detection in startup screen
+* **ollama as default**: Default provider changed from Anthropic to Ollama (local) for zero-config local inference
+* **skip-permissions by default**: Both `claude` and `openclaude` entry points auto-skip permission prompts; override with `--no-skip-permissions`
+* **version bump system**: Automatic fork version tracking with incremental suffix (e.g., `0.5.2.1`, `0.5.2.2`); resets suffix when upstream base version changes
+* **GSD integration**: Auto-installs get-shit-done skills on first launch, auto-runs `/gsd-update`
+* **provider flag remapping**: `CLAUDE_CODE_USE_GEMINI` routes to Gemini CLI (OAuth), `CLAUDE_CODE_USE_GEMINI_API` routes to Gemini API (key-based)
+
+### Changes
+
+* **config directory**: Config stored in `~/.claude` instead of `~/.openclaude` (falls back to `~/.openclaude` if exists)
+* **claude command**: Converted `bin/claude` from Node.js ESM to bash wrapper with `--dangerously-skip-permissions` by default
+* **anthropic fallbacks**: Replaced user-facing Anthropic API fallbacks with Ollama in `StartupScreen.ts` and `provider.tsx`
+* **MACRO.VERSION**: Changed from hardcoded `99.0.0` to actual package version for correct version display and update checks
+* **update command**: Allowed `bun run update` to work for the fork (was blocked for third-party providers)
+* **sync-fork.sh**: Added auto version bump step and protections for fork-specific files (`StartupScreen.ts`, `provider.tsx`, `bin/claude`)
+
+### Scripts Added
+
+* `bun run version:bump` - Bump fork version to upstream + incremental suffix
+* `bun run version:bump:check` - Dry run version bump
+* `bun run release` - Full release pipeline (build + bump + npm publish + GitHub release)
+* `bun run release:check` - Dry run release
+
 ## [0.5.2](https://github.com/Gitlawb/openclaude/compare/v0.5.1...v0.5.2) (2026-04-20)
 
 

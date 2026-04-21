@@ -13,7 +13,24 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, A
 OpenClaude is available at:
 [github.com/giovannimnz/openClaude](https://github.com/giovannimnz/openClaude)
 
-[Quick Start](#quick-start) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Community](#community)
+[Quick Start](#quick-start) | [Fork Differences](#fork-differences-from-gitelawbopenclaude) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Community](#community)
+
+## Fork Differences (from gitlawb/openclaude)
+
+This fork (`giovannimnz/openClaude`) extends [gitlawb/openclaude](https://github.com/gitlawb/openclaude) with the following changes:
+
+| Feature | Description |
+|---|---|
+| **Atius provider** | Built-in preset for Atius OpenAI-compatible API (`router.atius.com.br`) |
+| **Ollama as default** | Default provider is Ollama (local) instead of first-party Anthropic |
+| **`--dangerously-skip-permissions` by default** | Permission prompts are auto-skipped; override with `--no-skip-permissions` |
+| **`~/.claude` config directory** | Config stored in `~/.claude` instead of `~/.openclaude` (falls back to `~/.openclaude` if it exists) |
+| **GSD (get-shit-done) integration** | Auto-installs GSD skills on first launch, auto-runs `/gsd-update` |
+| **Version bump system** | Automatic version tracking: upstream version + incremental fork suffix (e.g., `0.5.2.1`, `0.5.2.2`) |
+| **`claude` command** | The `claude` CLI entry point also skips permissions by default |
+| **Provider flag remapping** | `CLAUDE_CODE_USE_GEMINI` routes to Gemini CLI (OAuth), `CLAUDE_CODE_USE_GEMINI_API` routes to Gemini API (key-based) |
+
+See [FORK.md](FORK.md) for full technical documentation of all fork changes.
 
 ## Star History
 
