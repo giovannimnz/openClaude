@@ -10,41 +10,58 @@ export type APIProvider =
   | 'gemini'
   | 'github'
   | 'codex'
+  | 'nvidia-nim'
+  | 'minimax'
   | 'mistral'
   | 'google-gemini-cli'
 
-export function getAPIProvider(): APIProvider | undefined {
-  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI_CLI)
-    ? 'google-gemini-cli'
-    : isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
-      ? 'gemini'
-      :
-      isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
-      ? 'mistral'
-      : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-        ? 'github'
-        : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-          ? isCodexModel()
-            ? 'codex'
-            : 'openai'
-          : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
-            ? 'bedrock'
-            : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
-              ? 'vertex'
-              : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-                ? 'foundry'
-                : 'google-gemini-cli' // Default to Google Gemini CLI
-}
-
-/**
- * Check if any provider is configured
- */
-export function isProviderConfigured(): boolean {
-  return getAPIProvider() !== undefined
+export function getAPIProvider(): APIProvider {
+  if (isEnvTruthy(process.env.NVIDIA_NIM)) {
+    return 'nvidia-nim'
+  }
+  if (isEnvTruthy(process.env.MINIMAX_API_KEY)) {
+    return 'minimax'
+  }
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
+    ? 'gemini'
+    :
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
+    ? 'mistral'
+    : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
+      ? 'github'
+      : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
+        ? isCodexModel()
+          ? 'codex'
+          : 'openai'
+        : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
+          ? 'bedrock'
+          : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
+            ? 'vertex'
+            : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+              ? 'foundry'
+              : 'firstParty'
 }
 
 export function usesAnthropicAccountFlow(): boolean {
   return false
+}
+
+/**
+ * Returns true when the GitHub provider should use Anthropic's native API
+ * format instead of the OpenAI-compatible shim.
+ *
+ * Enabled when CLAUDE_CODE_USE_GITHUB=1 and the model string contains "claude-"
+ * anywhere (handles bare names like "claude-sonnet-4" and compound formats like
+ * "github:copilot:claude-sonnet-4" or any future provider-prefixed variants).
+ *
+ * api.githubcopilot.com supports Anthropic native format for Claude models,
+ * enabling prompt caching via cache_control blocks which significantly reduces
+ * per-turn token costs by caching the system prompt and tool definitions.
+ */
+export function isGithubNativeAnthropicMode(resolvedModel?: string): boolean {
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)) return false
+  const model = resolvedModel?.trim() || process.env.OPENAI_MODEL?.trim() || ''
+  return model.toLowerCase().includes('claude-')
 }
 function isCodexModel(): boolean {
   return shouldUseCodexTransport(
